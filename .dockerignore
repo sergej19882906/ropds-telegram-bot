@@ -1,0 +1,11 @@
+target/
+.git/
+.vscode/
+.idea/
+.env
+.env.local
+.env.*.local
+*.md
+LICENSE*
+docker-compose*.yml
+Dockerfile*

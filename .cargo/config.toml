@@ -1,0 +1,12 @@
+# Конфигурация Cargo для проекта ropds-telegram-bot
+#
+# Этот файл автоматически применяется при сборке проекта.
+# Он решает проблему STATUS_STACK_OVERFLOW на Windows,
+# увеличивая размер стека главного потока до 8 МБ.
+
+# Настройки только для Windows (x86_64)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]

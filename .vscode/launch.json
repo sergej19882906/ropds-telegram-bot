@@ -1,0 +1,65 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug (debug build)",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=ropds-telegram-bot",
+          "--package=ropds-telegram-bot"
+        ]
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug"
+      },
+      "sourceMap": {
+        "/rustc/*": "${env:HOME}/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug (release build)",
+      "cargo": {
+        "args": [
+          "build",
+          "--release",
+          "--bin=ropds-telegram-bot",
+          "--package=ropds-telegram-bot"
+        ]
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "info"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug current test",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--bin=ropds-telegram-bot",
+          "--package=ropds-telegram-bot"
+        ]
+      },
+      "args": ["${input:testFilter}"],
+      "cwd": "${workspaceFolder}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testFilter",
+      "type": "promptString",
+      "description": "Test name filter (leave empty for all)"
+    }
+  ]
+}

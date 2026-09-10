@@ -1,0 +1,30 @@
+ropds-telegram-bot/
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml
+│   │   └── release.yml
+│   ├── FUNDING.yml
+│   └── pull_request_template.md
+├── .vscode/
+│   ├── settings.json
+│   ├── extensions.json
+│   ├── tasks.json
+│   └── launch.json
+├── src/
+│   ├── main.rs
+│   ├── config.rs
+│   ├── handlers.rs
+│   └── ropds.rs
+├── .dockerignore
+├── .editorconfig
+├── .env.example
+├── .gitignore
+├── Cargo.toml
+├── CHANGELOG.md
+├── docker-compose.yml
+├── Dockerfile
+├── LICENSE-MIT
+├── LICENSE-APACHE
+├── README.md
+├── README_RU.md
+└── rust-toolchain.toml

@@ -1,0 +1,64 @@
+{
+  // Rust Analyzer
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.cargo.loadOutDirsFromCheck": true,
+  "rust-analyzer.diagnostics.enable": true,
+  "rust-analyzer.lens.enable": true,
+  "rust-analyzer.inlayHints.typeHints.enable": true,
+  "rust-analyzer.inlayHints.parameterHints.enable": true,
+  
+  // Форматирование
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": false,
+  "editor.defaultFormatter": "rust-lang.rust-analyzer",
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.rulers": [100]
+  },
+  
+  // Общие настройки редактора
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.trimAutoWhitespace": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  
+  // Проводник
+  "explorer.confirmDelete": false,
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "Cargo.toml": "Cargo.lock",
+    "*.rs": "${capture}.rs"
+  },
+  
+  // Терминал
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  
+  // Git
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  
+  // Поиск
+  "search.exclude": {
+    "**/target": true,
+    "**/.git": true
+  },
+  
+  // Файлы
+  "files.exclude": {
+    "**/target": true
+  },
+  
+  // Emmet (для HTML в шаблонах)
+  "emmet.includeLanguages": {
+    "rust": "html"
+  }
+}

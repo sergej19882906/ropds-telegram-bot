@@ -1,0 +1,24 @@
+services:
+  ropds-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ropds-telegram-bot
+    restart: unless-stopped
+    
+    # Загружаем переменные из файла .env
+    env_file:
+      - .env
+      
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      
+    # Мы убрали раздел volumes, так как бот удаляет файлы после отправки.
+    # Это решает проблему с правами доступа (os error 13).
+    
+    # Логирование, чтобы файлы логов не разрастались бесконечно
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
