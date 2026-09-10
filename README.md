@@ -137,7 +137,7 @@ The project includes recommended VS Code settings in `.vscode/`. Install the rec
 
 ## 🐳 Docker
 
-Pre-built images will be available at `ghcr.io/sergej19882906/ropds-telegram-bot` after the first release.
+Pre-built images are available at `ghcr.io/sergej19882906/ropds-telegram-bot` after each version tag release.
 
 ```bash
 docker build -t ropds-telegram-bot .
