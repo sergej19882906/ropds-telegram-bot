@@ -235,7 +235,6 @@ docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 | Команда | Описание |
 |---|---|
 | `/start` | Показать справку |
-| `/help` | Показать справку |
 | `/search <запрос>` | Поиск книг |
 | `/recent` | Показать новые поступления |
 | `/authors` | Просмотр списка авторов |

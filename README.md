@@ -235,7 +235,6 @@ The project intentionally uses `rustls` instead of OpenSSL, so a standard Rust t
 | Command | Description |
 |---|---|
 | `/start` | Show help |
-| `/help` | Show help |
 | `/search <query>` | Search books |
 | `/recent` | Show recent additions |
 | `/authors` | Browse authors |

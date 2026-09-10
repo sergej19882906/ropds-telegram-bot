@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use teloxide::prelude::*;
-use teloxide::types::{InputFile, ReplyParameters};
+use teloxide::types::{InputFile, KeyboardButton, KeyboardMarkup, ReplyParameters};
 use teloxide::utils::command::BotCommands;
 
 use crate::ropds::{Book, DownloadContext, RopdsClient};
@@ -23,8 +23,6 @@ pub enum Cmd {
     Authors,
     #[command(description = "список жанров")]
     Genres,
-    #[command(description = "показать помощь")]
-    Help,
 }
 
 pub struct BotState {
@@ -79,6 +77,22 @@ fn allow_request(state: &SharedState, user_id: u64) -> bool {
     true
 }
 
+fn main_menu() -> KeyboardMarkup {
+    KeyboardMarkup::new(vec![
+        vec![
+            KeyboardButton::new("/search"),
+            KeyboardButton::new("/recent"),
+        ],
+        vec![
+            KeyboardButton::new("/authors"),
+            KeyboardButton::new("/genres"),
+        ],
+        vec![KeyboardButton::new("/start")],
+    ])
+    .persistent()
+    .resize_keyboard()
+}
+
 pub async fn handle_command(
     bot: Bot,
     msg: Message,
@@ -99,13 +113,14 @@ pub async fn handle_command(
     }
 
     match cmd {
-        Cmd::Start | Cmd::Help => {
+        Cmd::Start => {
             let text = format!(
                 "📚 *Бот библиотеки ROPDS*\n\n{}\n\nИспользуйте `/search <запрос>` для поиска книг\\.",
                 escape_md(&Cmd::descriptions().to_string())
             );
             bot.send_message(msg.chat.id, text)
                 .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .reply_markup(main_menu())
                 .await?;
         }
         Cmd::Search(query) => {
