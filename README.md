@@ -40,6 +40,8 @@ cargo run --release
 
 If you prefer to build without running the app, use `cargo build --release` and then start the binary from `target/release/ropds-telegram-bot`.
 
+GitHub Releases currently include binaries for Linux x86_64 and ARM64, Windows x86_64 and ARM64, and macOS Intel and Apple Silicon. Linux binaries are published as `.tar.gz` archives; Windows and macOS binaries are published as `.zip` archives.
+
 ### With Docker
 
 ```bash

@@ -40,6 +40,8 @@ cargo run --release
 
 Если нужно собрать проект без запуска, используйте `cargo build --release`, после чего можно запустить бинарник из `target/release/ropds-telegram-bot`.
 
+В GitHub Releases доступны бинарники для Linux x86_64 и ARM64, Windows x86_64 и ARM64, а также macOS Intel и Apple Silicon. Бинарники для Linux публикуются в архивах `.tar.gz`, для Windows и macOS — в архивах `.zip`.
+
 ### Через Docker
 
 ```bash
