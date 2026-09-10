@@ -25,6 +25,79 @@ Telegram bot for searching and downloading books from a self-hosted [ROPDS](http
 
 Download the latest release for your platform from the [GitHub Releases page](https://github.com/sergej19882906/ropds-telegram-bot/releases).
 
+### Run a Linux binary with systemd
+
+Check the system architecture:
+
+```bash
+uname -m
+```
+
+Download the matching binary from GitHub Releases (`x86_64` for `x86_64`, `aarch64` for `aarch64`) and install it:
+
+```bash
+sudo useradd --system --home /opt/ropds-telegram-bot --shell /usr/sbin/nologin ropds
+sudo mkdir -p /opt/ropds-telegram-bot
+sudo cp ropds-telegram-bot /opt/ropds-telegram-bot/
+sudo chown -R ropds:ropds /opt/ropds-telegram-bot
+sudo chmod 755 /opt/ropds-telegram-bot/ropds-telegram-bot
+```
+
+Create `/opt/ropds-telegram-bot/.env`:
+
+```env
+BOT_TOKEN=your_telegram_bot_token
+ROPDS_URL=http://127.0.0.1:8081
+RUST_LOG=info
+```
+
+Restrict access to the configuration file:
+
+```bash
+sudo chown ropds:ropds /opt/ropds-telegram-bot/.env
+sudo chmod 600 /opt/ropds-telegram-bot/.env
+```
+
+Create `/etc/systemd/system/ropds-telegram-bot.service`:
+
+```ini
+[Unit]
+Description=ROPDS Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ropds
+Group=ropds
+WorkingDirectory=/opt/ropds-telegram-bot
+EnvironmentFile=/opt/ropds-telegram-bot/.env
+ExecStart=/opt/ropds-telegram-bot/ropds-telegram-bot
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable automatic startup and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ropds-telegram-bot
+sudo systemctl status ropds-telegram-bot
+```
+
+View logs:
+
+```bash
+sudo journalctl -u ropds-telegram-bot -f
+```
+
 ### From source
 
 ```bash
