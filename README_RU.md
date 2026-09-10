@@ -67,7 +67,7 @@ docker pull ghcr.io/sergej19882906/ropds-telegram-bot:latest
 docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 ```
 
-Токен должен иметь право на чтение packages. Workflow использует `GITHUB_TOKEN` с правом записи packages и публикует образ при отправке тега версии, например `v0.1.2`.
+Опубликованный образ поддерживает `linux/amd64` и `linux/arm64`; Docker автоматически выбирает подходящую архитектуру. Токен должен иметь право на чтение packages. Workflow использует `GITHUB_TOKEN` с правом записи packages и публикует образ при отправке тега версии, например `v0.1.2`.
 
 ## ⚙️ Конфигурация
 

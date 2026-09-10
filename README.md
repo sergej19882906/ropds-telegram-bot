@@ -67,7 +67,7 @@ docker pull ghcr.io/sergej19882906/ropds-telegram-bot:latest
 docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 ```
 
-The token must have permission to read packages. The workflow uses `GITHUB_TOKEN` with package write permission to publish images when a version tag such as `v0.1.2` is pushed.
+The published image supports both `linux/amd64` and `linux/arm64`; Docker selects the matching architecture automatically. The token must have permission to read packages. The workflow uses `GITHUB_TOKEN` with package write permission to publish images when a version tag such as `v0.1.2` is pushed.
 
 ## ⚙️ Configuration
 
