@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-11
+
+### Fixed
+- Request the paginated OPDS recent books feed
+- Allow slow OPDS book feeds up to 180 seconds
+- Include full request error details in logs
+
 ## [0.1.5] - 2026-09-11
 
 ### Added
