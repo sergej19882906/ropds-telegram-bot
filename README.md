@@ -51,6 +51,24 @@ cp .env.example .env
 docker compose up -d
 ```
 
+### GitHub Container Registry
+
+Release tags automatically publish the image to GitHub Container Registry:
+
+```text
+ghcr.io/sergej19882906/ropds-telegram-bot
+```
+
+Log in and pull the latest image:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+docker pull ghcr.io/sergej19882906/ropds-telegram-bot:latest
+docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
+```
+
+The token must have permission to read packages. The workflow uses `GITHUB_TOKEN` with package write permission to publish images when a version tag such as `v0.1.2` is pushed.
+
 ## ⚙️ Configuration
 
 All settings are loaded from environment variables or a `.env` file:

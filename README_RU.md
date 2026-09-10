@@ -51,6 +51,24 @@ cp .env.example .env
 docker compose up -d
 ```
 
+### GitHub Container Registry
+
+При создании релизного тега образ автоматически публикуется в GitHub Container Registry:
+
+```text
+ghcr.io/sergej19882906/ropds-telegram-bot
+```
+
+Войти в реестр и скачать последнюю версию образа:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+docker pull ghcr.io/sergej19882906/ropds-telegram-bot:latest
+docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
+```
+
+Токен должен иметь право на чтение packages. Workflow использует `GITHUB_TOKEN` с правом записи packages и публикует образ при отправке тега версии, например `v0.1.2`.
+
 ## ⚙️ Конфигурация
 
 Все настройки загружаются из переменных окружения или файла `.env`:
