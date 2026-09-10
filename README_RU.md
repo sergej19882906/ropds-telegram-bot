@@ -40,7 +40,7 @@ cargo run --release
 
 Если нужно собрать проект без запуска, используйте `cargo build --release`, после чего можно запустить бинарник из `target/release/ropds-telegram-bot`.
 
-В GitHub Releases доступны бинарники для Linux x86_64 и ARM64, Windows x86_64 и ARM64, а также macOS Intel и Apple Silicon. Бинарники для Linux публикуются в архивах `.tar.gz`, для Windows и macOS — в архивах `.zip`.
+Workflow релизов настроен для сборки Linux x86_64 (GNU и MUSL), Linux ARM64, Windows x86_64, Windows ARM64, а также macOS Intel и Apple Silicon. Бинарники для Linux публикуются в архивах `.tar.gz`, для Windows и macOS — в архивах `.zip`.
 
 ### Через Docker
 
@@ -87,6 +87,31 @@ cargo test           # Тесты
 cargo fmt            # Форматирование
 cargo clippy         # Линтинг
 ```
+
+### Кросс-компиляция релизов
+
+Workflow GitHub Releases собирает следующие Rust targets:
+
+| Платформа | Rust target | Архив |
+|---|---|---|
+| Linux x86_64 (GNU) | `x86_64-unknown-linux-gnu` | `.tar.gz` |
+| Linux x86_64 (MUSL) | `x86_64-unknown-linux-musl` | `.tar.gz` |
+| Linux ARM64 | `aarch64-unknown-linux-gnu` | `.tar.gz` |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `.zip` |
+| Windows ARM64 | `aarch64-pc-windows-msvc` | `.zip` |
+| macOS Intel | `x86_64-apple-darwin` | `.zip` |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `.zip` |
+
+В Windows Linux targets можно собрать с помощью [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) и Zig:
+
+```powershell
+cargo install cargo-zigbuild
+cargo zigbuild --release --target x86_64-unknown-linux-gnu
+cargo zigbuild --release --target x86_64-unknown-linux-musl
+cargo zigbuild --release --target aarch64-unknown-linux-gnu
+```
+
+Файл `.env` читается при запуске бинарника и не встраивается в него во время компиляции.
 
 ### Настройка VS Code
 

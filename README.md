@@ -40,7 +40,7 @@ cargo run --release
 
 If you prefer to build without running the app, use `cargo build --release` and then start the binary from `target/release/ropds-telegram-bot`.
 
-GitHub Releases currently include binaries for Linux x86_64 and ARM64, Windows x86_64 and ARM64, and macOS Intel and Apple Silicon. Linux binaries are published as `.tar.gz` archives; Windows and macOS binaries are published as `.zip` archives.
+The release workflow is configured for Linux x86_64 (GNU and MUSL), Linux ARM64, Windows x86_64, Windows ARM64, and macOS Intel and Apple Silicon. Linux binaries are published as `.tar.gz` archives; Windows and macOS binaries are published as `.zip` archives.
 
 ### With Docker
 
@@ -87,6 +87,31 @@ cargo test           # Run tests
 cargo fmt            # Format code
 cargo clippy         # Lint
 ```
+
+### Cross-platform release builds
+
+The GitHub release workflow builds the following Rust targets:
+
+| Platform | Rust target | Archive |
+|---|---|---|
+| Linux x86_64 (GNU) | `x86_64-unknown-linux-gnu` | `.tar.gz` |
+| Linux x86_64 (MUSL) | `x86_64-unknown-linux-musl` | `.tar.gz` |
+| Linux ARM64 | `aarch64-unknown-linux-gnu` | `.tar.gz` |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `.zip` |
+| Windows ARM64 | `aarch64-pc-windows-msvc` | `.zip` |
+| macOS Intel | `x86_64-apple-darwin` | `.zip` |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `.zip` |
+
+On Windows, Linux targets can be built with [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) and Zig:
+
+```powershell
+cargo install cargo-zigbuild
+cargo zigbuild --release --target x86_64-unknown-linux-gnu
+cargo zigbuild --release --target x86_64-unknown-linux-musl
+cargo zigbuild --release --target aarch64-unknown-linux-gnu
+```
+
+The `.env` file is read when the binary starts; it is not embedded into the binary during compilation.
 
 ### VS Code setup
 
