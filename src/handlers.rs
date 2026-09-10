@@ -170,7 +170,7 @@ pub async fn handle_command(
 
                     bot.send_message(
                         msg.chat.id,
-                        format!("📂 *{}* (выберите для поиска):", title),
+                        format!("📂 *{}* \\(выберите для поиска\\):", title),
                     )
                     .parse_mode(teloxide::types::ParseMode::MarkdownV2)
                     .reply_markup(markup)
