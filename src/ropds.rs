@@ -146,7 +146,7 @@ impl RopdsClient {
             anyhow::anyhow!("Failed to parse OPDS 2.0 JSON response: {}", e)
         })?;
 
-        Ok(feed.into_books(self.base_url.as_str()))
+        Ok(feed.into_books(&self.base_url))
     }
 
     pub async fn download_book(&self, ctx: &DownloadContext) -> Result<(PathBuf, String)> {
@@ -402,7 +402,7 @@ struct Opds2Nav {
 }
 
 impl Opds2Feed {
-    fn into_books(self, base_url: &str) -> Vec<Book> {
+    fn into_books(self, base_url: &Url) -> Vec<Book> {
         let mut pubs = self.publications;
         for group in self.groups {
             pubs.extend(group.publications);
@@ -412,7 +412,7 @@ impl Opds2Feed {
 }
 
 impl Opds2Publication {
-    fn into_book(self, base_url: &str) -> Book {
+    fn into_book(self, base_url: &Url) -> Book {
         let author = extract_author_name(&self.metadata.author)
             .or_else(|| extract_author_name(&self.metadata.authors))
             .unwrap_or_else(|| "Неизвестный автор".to_string());
@@ -429,18 +429,16 @@ impl Opds2Publication {
             .map(|link| link.href.clone())
             .unwrap_or_default();
 
-        let url = if relative_url.starts_with("http://") || relative_url.starts_with("https://") {
-            relative_url
-        } else {
-            format!("{}{}", base_url, relative_url)
-        };
+        let url = base_url
+            .join(&relative_url)
+            .map(|url| url.to_string())
+            .unwrap_or(relative_url);
 
         let cover_url = self.images.first().map(|img| {
-            if img.href.starts_with("http://") || img.href.starts_with("https://") {
-                img.href.clone()
-            } else {
-                format!("{}{}", base_url, img.href)
-            }
+            base_url
+                .join(&img.href)
+                .map(|url| url.to_string())
+                .unwrap_or_else(|_| img.href.clone())
         });
 
         Book {
@@ -508,5 +506,30 @@ mod tests {
     #[test]
     fn sanitizes_filenames() {
         assert_eq!(sanitize_filename("a/b:c"), "a_b_c");
+    }
+
+    #[test]
+    fn resolves_acquisition_links_without_duplicate_slashes() {
+        let base = Url::parse("http://library.example.test:8081").unwrap();
+        let publication = Opds2Publication {
+            metadata: Opds2Metadata {
+                title: "Book".to_string(),
+                author: Value::String("Author".to_string()),
+                authors: Value::Null,
+            },
+            links: vec![Opds2Link {
+                href: "/opds/download/123/0/".to_string(),
+                rel: Some("acquisition".to_string()),
+                r#type: None,
+            }],
+            images: Vec::new(),
+        };
+
+        let book = publication.into_book(&base);
+
+        assert_eq!(
+            book.url,
+            "http://library.example.test:8081/opds/download/123/0/"
+        );
     }
 }

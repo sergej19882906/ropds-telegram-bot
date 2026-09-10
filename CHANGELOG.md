@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-10
+
+### Fixed
+- Resolve OPDS acquisition and cover URLs with URL joining to avoid duplicate slashes and download 404 errors
+
 ## [0.1.2] - 2026-09-10
 
 ### Added
