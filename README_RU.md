@@ -154,10 +154,46 @@ sudo journalctl -u ropds-telegram-bot -f
 
 ### Через Docker
 
+Создайте файл конфигурации:
+
 ```bash
 cp .env.example .env
-# Отредактируйте .env
+# Отредактируйте .env, указав BOT_TOKEN и ROPDS_URL
+```
 
+Соберите и запустите контейнер через Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Проверьте состояние контейнера и логи:
+
+```bash
+docker compose ps
+docker compose logs -f ropds-bot
+```
+
+Остановите контейнер:
+
+```bash
+docker compose down
+```
+
+Чтобы использовать готовый образ из GitHub Container Registry вместо локальной сборки, укажите `image` в `docker-compose.yml`:
+
+```yaml
+services:
+  ropds-bot:
+    image: ghcr.io/sergej19882906/ropds-telegram-bot:latest
+    env_file:
+      - .env
+    restart: unless-stopped
+```
+
+После этого запустите контейнер:
+
+```bash
 docker compose up -d
 ```
 

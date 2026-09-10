@@ -154,10 +154,46 @@ The release workflow is configured for Linux x86_64 (GNU and MUSL), Linux ARM64,
 
 ### With Docker
 
+Create the configuration file:
+
 ```bash
 cp .env.example .env
-# Edit .env
+# Edit .env and set BOT_TOKEN and ROPDS_URL
+```
 
+Build and start the container with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Check the container status and logs:
+
+```bash
+docker compose ps
+docker compose logs -f ropds-bot
+```
+
+Stop the container:
+
+```bash
+docker compose down
+```
+
+To use the pre-built image from GitHub Container Registry instead of building locally, set `image` in `docker-compose.yml`:
+
+```yaml
+services:
+  ropds-bot:
+    image: ghcr.io/sergej19882906/ropds-telegram-bot:latest
+    env_file:
+      - .env
+    restart: unless-stopped
+```
+
+Then start it:
+
+```bash
 docker compose up -d
 ```
 
