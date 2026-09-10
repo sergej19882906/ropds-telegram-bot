@@ -109,7 +109,9 @@ jobs:
             TAG=${GITHUB_REF_NAME}
             awk "/^## \\[${TAG#v}\\]/{flag=1;next}/^## \\[/{flag=0}flag" CHANGELOG.md > notes.md
           fi
-          [ ! -s notes.md ] && echo "Release ${GITHUB_REF_NAME}" > notes.md
+          if [ ! -s notes.md ]; then
+            echo "Release ${GITHUB_REF_NAME}" > notes.md
+          fi
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
