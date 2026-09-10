@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_BOOK_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_COVER_SIZE: u64 = 5 * 1024 * 1024;
+const OPDS_BOOKS_TIMEOUT: Duration = Duration::from_secs(180);
 #[derive(Debug, Clone)]
 pub struct Book {
     pub title: String,
@@ -135,6 +136,7 @@ impl RopdsClient {
         let response = self
             .http
             .get(url)
+            .timeout(OPDS_BOOKS_TIMEOUT)
             .header(reqwest::header::ACCEPT, "application/opds+json")
             .send()
             .await

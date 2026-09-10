@@ -273,7 +273,7 @@ async fn send_books_with_covers(
             }
         }
         Err(e) => {
-            tracing::error!(error = %e, "Request failed");
+            tracing::error!(error = ?e, "Request failed");
             bot.send_message(chat_id, "❌ Ошибка при обращении к ROPDS\\.")
                 .parse_mode(teloxide::types::ParseMode::MarkdownV2)
                 .await?;
