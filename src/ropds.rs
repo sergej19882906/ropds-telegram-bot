@@ -79,7 +79,7 @@ impl RopdsClient {
     }
 
     pub async fn get_recent_books(&self) -> Result<Vec<Book>> {
-        let url = self.base_url.join("/opds/v2/recent/?lang=ru")?;
+        let url = self.base_url.join("/opds/v2/recent/1/?lang=ru")?;
         self.fetch_books(url).await
     }
 
