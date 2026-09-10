@@ -49,7 +49,7 @@ jobs:
             ext: ""
             archive: zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -87,7 +87,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           7z a ../../../${{ env.BINARY_NAME }}-${{ matrix.target }}.zip \
             ${{ env.BINARY_NAME }}${{ matrix.ext }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
           path: ${{ env.BINARY_NAME }}-${{ matrix.target }}.${{ matrix.archive }}
@@ -98,8 +98,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -110,7 +110,7 @@ jobs:
             awk "/^## \\[${TAG#v}\\]/{flag=1;next}/^## \\[/{flag=0}flag" CHANGELOG.md > notes.md
           fi
           [ ! -s notes.md ] && echo "Release ${GITHUB_REF_NAME}" > notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
           body_path: notes.md
