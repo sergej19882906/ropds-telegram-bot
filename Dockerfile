@@ -26,7 +26,7 @@ FROM debian:bookworm-slim AS runtime
 
 # Устанавливаем только необходимые для работы компоненты
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates tzdata procps && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 # Создаем непривилегированного пользователя для безопасности
@@ -46,9 +46,9 @@ USER bot
 # Переменные окружения по умолчанию
 ENV RUST_LOG=info
 
-# Проверка работоспособности (Healthcheck)
+# Проверка работоспособности: основной процесс контейнера должен быть запущен.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD pgrep -x ropds-telegram-bot > /dev/null || exit 1
+    CMD ["sh", "-c", "kill -0 1"]
 
 # Запуск бота
 ENTRYPOINT ["ropds-telegram-bot"]
