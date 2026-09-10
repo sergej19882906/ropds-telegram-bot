@@ -25,6 +25,43 @@ Telegram-бот для поиска и скачивания книг из сам
 
 Скачайте последний релиз для вашей платформы на [странице GitHub Releases](https://github.com/sergej19882906/ropds-telegram-bot/releases).
 
+### Запуск Windows-бинарника
+
+Скачайте подходящий архив из GitHub Releases:
+
+- `x86_64-pc-windows-msvc` — обычная 64-битная Windows для Intel/AMD;
+- `aarch64-pc-windows-msvc` — Windows ARM64.
+
+Распакуйте архив, создайте рядом с `ropds-telegram-bot.exe` файл `.env` и добавьте настройки:
+
+```env
+BOT_TOKEN=ваш_telegram_bot_token
+ROPDS_URL=http://127.0.0.1:8081
+RUST_LOG=info
+```
+
+Запустите бота из PowerShell:
+
+```powershell
+cd C:\Apps\ropds-telegram-bot
+.\ropds-telegram-bot.exe
+```
+
+Если Windows заблокировал скачанный файл, разблокируйте его:
+
+```powershell
+Unblock-File .\ropds-telegram-bot.exe
+```
+
+Для остановки нажмите `Ctrl+C`. Для запуска в фоне используйте:
+
+```powershell
+Start-Process -FilePath "C:\Apps\ropds-telegram-bot\ropds-telegram-bot.exe" `
+  -WorkingDirectory "C:\Apps\ropds-telegram-bot"
+```
+
+Файл `.env` содержит секреты и не должен загружаться на GitHub.
+
 ### Из исходников
 
 ```bash

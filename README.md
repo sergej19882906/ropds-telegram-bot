@@ -25,6 +25,43 @@ Telegram bot for searching and downloading books from a self-hosted [ROPDS](http
 
 Download the latest release for your platform from the [GitHub Releases page](https://github.com/sergej19882906/ropds-telegram-bot/releases).
 
+### Run a Windows binary
+
+Download the matching archive from GitHub Releases:
+
+- `x86_64-pc-windows-msvc` for standard 64-bit Intel/AMD Windows;
+- `aarch64-pc-windows-msvc` for Windows on ARM64.
+
+Extract the archive, create a `.env` file next to `ropds-telegram-bot.exe`, and add your settings:
+
+```env
+BOT_TOKEN=your_telegram_bot_token
+ROPDS_URL=http://127.0.0.1:8081
+RUST_LOG=info
+```
+
+Start the bot from PowerShell:
+
+```powershell
+cd C:\Apps\ropds-telegram-bot
+.\ropds-telegram-bot.exe
+```
+
+If Windows blocks the downloaded executable, unblock it before starting:
+
+```powershell
+Unblock-File .\ropds-telegram-bot.exe
+```
+
+Stop the bot with `Ctrl+C`. To start it in the background:
+
+```powershell
+Start-Process -FilePath "C:\Apps\ropds-telegram-bot\ropds-telegram-bot.exe" `
+  -WorkingDirectory "C:\Apps\ropds-telegram-bot"
+```
+
+The `.env` file contains secrets and must not be committed to GitHub.
+
 ### Run a Linux binary with systemd
 
 Check the system architecture:
