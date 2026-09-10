@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-11
+
+### Added
+- Persistent Telegram reply menu with search, recent books, authors, genres, and start actions
+- Windows and Linux binary deployment documentation
+- Docker container startup documentation
+
+### Fixed
+- Author and genre navigation using cached callback identifiers and OPDS navigation links
+- MarkdownV2 escaping in author and genre menus
+- Synology-compatible Docker healthcheck
+- UTF-8 BOM in `Cargo.toml`
+
 ## [0.1.4] - 2026-09-10
 
 ### Fixed
