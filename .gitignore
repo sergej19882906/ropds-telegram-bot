@@ -29,5 +29,11 @@ logs/
 tarpaulin-report.html
 coverage/
 
+# Build and release artifacts
+*.tar
+*.tar.gz
+*.zip
+downloads/
+
 # Docker
 docker-compose.override.yml

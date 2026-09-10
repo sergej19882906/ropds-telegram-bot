@@ -9,3 +9,7 @@ target/
 LICENSE*
 docker-compose*.yml
 Dockerfile*
+*.tar
+*.tar.gz
+*.zip
+downloads/

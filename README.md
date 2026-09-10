@@ -11,9 +11,10 @@ Telegram bot for searching and downloading books from a self-hosted [ROPDS](http
 ## ✨ Features
 
 - 🔍 Search books by title, author, or genre
+- 📚 Browse recent additions, authors, and genres
 - 📥 Download books directly to Telegram chat (up to 50 MB)
-- 🔗 Direct link for larger files
-- 🖼️ Cover images support
+- 🔗 Get a direct link for larger files
+- 🖼️ Cover image support
 - 🔐 HTTP Basic Auth support for secured ROPDS instances
 - 🚀 Lightweight single binary (~10 MB)
 - 🐳 Docker-ready
@@ -22,7 +23,7 @@ Telegram bot for searching and downloading books from a self-hosted [ROPDS](http
 
 ### From binaries
 
-Download the latest release for your platform from [Releases](../../releases).
+Download the latest release for your platform from the [GitHub Releases page](https://github.com/sergej19882906/ropds-telegram-bot/releases).
 
 ### From source
 
@@ -37,6 +38,8 @@ cp .env.example .env
 cargo run --release
 ```
 
+If you prefer to build without running the app, use `cargo build --release` and then start the binary from `target/release/ropds-telegram-bot`.
+
 ### With Docker
 
 ```bash
@@ -48,7 +51,7 @@ docker compose up -d
 
 ## ⚙️ Configuration
 
-All settings are loaded from environment variables or `.env` file:
+All settings are loaded from environment variables or a `.env` file:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -59,7 +62,7 @@ All settings are loaded from environment variables or `.env` file:
 | `ALLOWED_USER_IDS` | ❌ | — | Comma-separated allowed Telegram user IDs; empty allows all users |
 | `RUST_LOG` | ❌ | `info` | Log level (`trace`, `debug`, `info`, `warn`, `error`) |
 
-Book downloads are limited to 50 MB, covers to 5 MB, and at most two downloads run concurrently. Set `ALLOWED_USER_IDS` for production deployments.
+The project intentionally uses `rustls` instead of OpenSSL, so a standard Rust toolchain is enough for local builds. Book downloads are limited to 50 MB, covers to 5 MB, and at most two downloads run concurrently. Set `ALLOWED_USER_IDS` for production deployments.
 
 ## 📖 Commands
 
@@ -67,7 +70,10 @@ Book downloads are limited to 50 MB, covers to 5 MB, and at most two downloads r
 |---|---|
 | `/start` | Show help |
 | `/help` | Show help |
-| `/search <query>` | Search for books |
+| `/search <query>` | Search books |
+| `/recent` | Show recent additions |
+| `/authors` | Browse authors |
+| `/genres` | Browse genres |
 
 ## 🏗 Development
 
@@ -97,8 +103,8 @@ docker run --env-file .env ropds-telegram-bot
 
 Licensed under either of
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE.txt) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT.txt) or http://opensource.org/licenses/MIT)
 
 at your option.
 

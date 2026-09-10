@@ -1,7 +1,8 @@
 # ROPDS Telegram Bot
 
 [![CI](https://github.com/sergej19882906/ropds-telegram-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/sergej19882906/ropds-telegram-bot/actions/workflows/ci.yml)
-sergej19882906[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://github.com/sergej19882906/ropds-telegram-bot/actions/workflows/release.yml/badge.svg)](https://github.com/sergej19882906/ropds-telegram-bot/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Telegram-бот для поиска и скачивания книг из самодостаточной библиотеки [ROPDS](https://github.com/dshein-alt/ropds) через протокол OPDS 2.0.
 
@@ -10,6 +11,7 @@ Telegram-бот для поиска и скачивания книг из сам
 ## ✨ Возможности
 
 - 🔍 Поиск книг по названию, автору или жанру
+- 📚 Просмотр новых поступлений, авторов и жанров
 - 📥 Скачивание книг прямо в чат Telegram (до 50 МБ)
 - 🔗 Прямая ссылка для больших файлов
 - 🖼️ Поддержка обложек
@@ -21,7 +23,7 @@ Telegram-бот для поиска и скачивания книг из сам
 
 ### Из бинарников
 
-Скачайте последний релиз для вашей платформы из [Releases](../../releases).
+Скачайте последний релиз для вашей платформы на [странице GitHub Releases](https://github.com/sergej19882906/ropds-telegram-bot/releases).
 
 ### Из исходников
 
@@ -35,6 +37,8 @@ cp .env.example .env
 
 cargo run --release
 ```
+
+Если нужно собрать проект без запуска, используйте `cargo build --release`, после чего можно запустить бинарник из `target/release/ropds-telegram-bot`.
 
 ### Через Docker
 
@@ -58,7 +62,7 @@ docker compose up -d
 | `ALLOWED_USER_IDS` | ❌ | — | Разрешённые Telegram user ID через запятую; пустое значение разрешает всех |
 | `RUST_LOG` | ❌ | `info` | Уровень логирования |
 
-Размер книги ограничен 50 МБ, размер обложки — 5 МБ, одновременно выполняются не более двух скачиваний. Для production рекомендуется задать `ALLOWED_USER_IDS`.
+Проект намеренно использует `rustls` вместо OpenSSL, поэтому для сборки достаточно обычного Rust toolchain. Размер книги ограничен 50 МБ, размер обложки — 5 МБ, одновременно выполняются не более двух скачиваний. Для production рекомендуется задать `ALLOWED_USER_IDS`.
 
 ## 📖 Команды
 
@@ -67,6 +71,9 @@ docker compose up -d
 | `/start` | Показать справку |
 | `/help` | Показать справку |
 | `/search <запрос>` | Поиск книг |
+| `/recent` | Показать новые поступления |
+| `/authors` | Просмотр списка авторов |
+| `/genres` | Просмотр списка жанров |
 
 ## 🏗 Разработка
 
@@ -87,8 +94,8 @@ cargo clippy         # Линтинг
 
 Проект лицензирован на выбор под:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE.txt))
+- MIT license ([LICENSE-MIT](LICENSE-MIT.txt))
 
 ## 🤝 Участие в разработке
 
