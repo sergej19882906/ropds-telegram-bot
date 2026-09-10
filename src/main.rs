@@ -39,6 +39,7 @@ async fn run() -> Result<()> {
     let state: SharedState = Arc::new(BotState {
         ropds,
         download_cache: DashMap::new(),
+        navigation_cache: DashMap::new(),
         next_id: AtomicU64::new(1),
         allowed_user_ids: cfg.allowed_user_ids,
         last_activity: DashMap::new(),

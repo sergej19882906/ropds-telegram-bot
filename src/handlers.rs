@@ -30,6 +30,7 @@ pub enum Cmd {
 pub struct BotState {
     pub ropds: RopdsClient,
     pub download_cache: DashMap<u64, CachedDownload>,
+    pub navigation_cache: DashMap<u64, NavigationTarget>,
     pub next_id: AtomicU64,
     pub allowed_user_ids: HashSet<u64>,
     pub last_activity: DashMap<u64, Instant>,
@@ -42,6 +43,12 @@ pub type SharedState = Arc<BotState>;
 pub struct CachedDownload {
     pub owner_id: u64,
     pub context: DownloadContext,
+}
+
+#[derive(Clone)]
+pub struct NavigationTarget {
+    pub owner_id: u64,
+    pub target: String,
 }
 
 fn message_user_id(msg: &Message) -> Option<u64> {
@@ -138,10 +145,20 @@ pub async fn handle_command(
                 Ok(items) => {
                     let mut rows: Vec<Vec<teloxide::types::InlineKeyboardButton>> = Vec::new();
                     for item in items {
-                        // ИСПРАВЛЕНИЕ: добавлен .clone() для item.title
+                        let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
+                        state.navigation_cache.insert(
+                            navigation_id,
+                            NavigationTarget {
+                                owner_id: user_id,
+                                target: item
+                                    .href
+                                    .clone()
+                                    .unwrap_or_else(|| format!("search:{}", item.title)),
+                            },
+                        );
                         rows.push(vec![teloxide::types::InlineKeyboardButton::callback(
                             item.title.clone(),
-                            format!("search_nav:{}", item.title),
+                            format!("nav:{navigation_id}"),
                         )]);
                     }
                     let markup = teloxide::types::InlineKeyboardMarkup::new(rows);
@@ -276,13 +293,68 @@ pub async fn handle_callback(
         return Ok(());
     };
 
-    if let Some(query) = data.strip_prefix("search_nav:") {
+    if let Some(id_str) = data.strip_prefix("nav:") {
         let _ = bot.answer_callback_query(&q.id).await;
 
+        let Ok(id) = id_str.parse::<u64>() else {
+            return Ok(());
+        };
+        let Some(target) = state.navigation_cache.get(&id).map(|value| value.clone()) else {
+            return Ok(());
+        };
+        if target.owner_id != requester_id {
+            return Ok(());
+        }
+        state.navigation_cache.remove(&id);
         if let Some(msg) = q.message {
             let chat_id = msg.chat().id;
             let msg_id = msg.id();
 
+            if let Some(path) = target.target.strip_prefix('/') {
+                let path = format!("/{path}");
+                match state.ropds.get_navigation(&path).await {
+                    Ok(items) if !items.is_empty() => {
+                        let mut rows = Vec::new();
+                        for item in items {
+                            let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
+                            state.navigation_cache.insert(
+                                navigation_id,
+                                NavigationTarget {
+                                    owner_id: requester_id,
+                                    target: item
+                                        .href
+                                        .clone()
+                                        .unwrap_or_else(|| format!("search:{}", item.title)),
+                                },
+                            );
+                            rows.push(vec![teloxide::types::InlineKeyboardButton::callback(
+                                item.title,
+                                format!("nav:{navigation_id}"),
+                            )]);
+                        }
+                        bot.edit_message_text(chat_id, msg_id, "📂 Выберите вариант:")
+                            .reply_markup(teloxide::types::InlineKeyboardMarkup::new(rows))
+                            .await?;
+                    }
+                    Ok(_) => {
+                        bot.edit_message_text(chat_id, msg_id, "😔 Список пуст\\.")
+                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .await?;
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "Navigation failed");
+                        bot.edit_message_text(chat_id, msg_id, "❌ Ошибка при получении списка\\.")
+                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .await?;
+                    }
+                }
+                return Ok(());
+            }
+
+            let query = target
+                .target
+                .strip_prefix("search:")
+                .unwrap_or(&target.target);
             let _ = bot
                 .edit_message_text(
                     chat_id,

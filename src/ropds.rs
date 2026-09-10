@@ -27,6 +27,7 @@ pub struct DownloadContext {
 #[derive(Debug, Clone)]
 pub struct NavItem {
     pub title: String,
+    pub href: Option<String>,
 }
 
 pub struct RopdsClient {
@@ -84,6 +85,7 @@ impl RopdsClient {
 
     pub async fn get_navigation(&self, path: &str) -> Result<Vec<NavItem>> {
         let url = self.base_url.join(path)?;
+        ensure_allowed_url(&url, &self.base_url)?;
         tracing::info!(url = %url, "Fetching navigation");
 
         let response = self
@@ -111,12 +113,20 @@ impl RopdsClient {
         })?;
 
         // Берем первые 20 элементов, чтобы не превысить лимиты Telegram
-        Ok(feed
+        let items = feed
             .navigation
             .into_iter()
+            .map(|n| NavItem {
+                title: n.title,
+                href: n.href,
+            })
+            .chain(feed.publications.into_iter().map(|publication| NavItem {
+                title: publication.metadata.title,
+                href: None,
+            }))
             .take(20)
-            .map(|n| NavItem { title: n.title })
-            .collect())
+            .collect();
+        Ok(items)
     }
 
     async fn fetch_books(&self, url: Url) -> Result<Vec<Book>> {
@@ -399,6 +409,8 @@ struct Opds2Image {
 struct Opds2Nav {
     #[serde(default)]
     title: String,
+    #[serde(default)]
+    href: Option<String>,
 }
 
 impl Opds2Feed {
