@@ -5,10 +5,15 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use teloxide::prelude::*;
-use teloxide::types::{InputFile, KeyboardButton, KeyboardMarkup, ReplyParameters};
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton, KeyboardMarkup,
+    MaybeInaccessibleMessage, ParseMode, ReplyParameters,
+};
 use teloxide::utils::command::BotCommands;
 
-use crate::ropds::{Book, DownloadContext, RopdsClient};
+use crate::ropds::{is_opds_href, Book, DownloadContext, NavItem, RopdsClient};
+
+const TELEGRAM_BUTTON_TEXT_LIMIT: usize = 64;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Команды бота:")]
@@ -93,6 +98,90 @@ fn main_menu() -> KeyboardMarkup {
     .resize_keyboard()
 }
 
+fn truncate_button_label(title: &str) -> String {
+    if title.chars().count() <= TELEGRAM_BUTTON_TEXT_LIMIT {
+        return title.to_string();
+    }
+    let mut label: String = title.chars().take(TELEGRAM_BUTTON_TEXT_LIMIT - 1).collect();
+    label.push('…');
+    label
+}
+
+fn searching_message(query: &str) -> String {
+    format!("🔍 Ищу: *{}*\\.\\.\\.", escape_md(query))
+}
+
+fn cache_nav_rows(
+    state: &SharedState,
+    owner_id: u64,
+    items: impl IntoIterator<Item = NavItem>,
+) -> Vec<Vec<InlineKeyboardButton>> {
+    items
+        .into_iter()
+        .map(|item| vec![nav_or_download_button(state, owner_id, item)])
+        .collect()
+}
+
+fn nav_or_download_button(
+    state: &SharedState,
+    owner_id: u64,
+    item: NavItem,
+) -> InlineKeyboardButton {
+    let label = truncate_button_label(&item.title);
+    if let Some(context) = item.download {
+        let id = state.next_id.fetch_add(1, Ordering::SeqCst);
+        state
+            .download_cache
+            .insert(id, CachedDownload { owner_id, context });
+        return InlineKeyboardButton::callback(label, format!("dl:{id}"));
+    }
+
+    let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
+    state.navigation_cache.insert(
+        navigation_id,
+        NavigationTarget {
+            owner_id,
+            target: item
+                .href
+                .unwrap_or_else(|| format!("search:{}", item.title)),
+        },
+    );
+    InlineKeyboardButton::callback(label, format!("nav:{navigation_id}"))
+}
+
+fn callback_message_is_media(msg: &MaybeInaccessibleMessage) -> bool {
+    msg.regular_message().is_some_and(|message| {
+        message.photo().is_some()
+            || message.video().is_some()
+            || message.document().is_some()
+            || message.animation().is_some()
+    })
+}
+
+async fn edit_callback_message(
+    bot: &Bot,
+    msg: &MaybeInaccessibleMessage,
+    text: impl Into<String>,
+    parse_mode: Option<ParseMode>,
+) -> Result<(), teloxide::RequestError> {
+    let chat_id = msg.chat().id;
+    let msg_id = msg.id();
+    let text = text.into();
+    if callback_message_is_media(msg) {
+        let mut request = bot.edit_message_caption(chat_id, msg_id).caption(text);
+        if let Some(mode) = parse_mode {
+            request = request.parse_mode(mode);
+        }
+        request.await.map(|_| ())
+    } else {
+        let mut request = bot.edit_message_text(chat_id, msg_id, text);
+        if let Some(mode) = parse_mode {
+            request = request.parse_mode(mode);
+        }
+        request.await.map(|_| ())
+    }
+}
+
 pub async fn handle_command(
     bot: Bot,
     msg: Message,
@@ -119,14 +208,14 @@ pub async fn handle_command(
                 escape_md(&Cmd::descriptions().to_string())
             );
             bot.send_message(msg.chat.id, text)
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .parse_mode(ParseMode::MarkdownV2)
                 .reply_markup(main_menu())
                 .await?;
         }
         Cmd::Search(query) => {
             if query.trim().is_empty() {
                 bot.send_message(msg.chat.id, "⚠️ Укажите запрос\\. Пример: `/search Дюна`")
-                    .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .await?;
                 return Ok(());
             }
@@ -154,29 +243,11 @@ pub async fn handle_command(
             match state.ropds.get_navigation(path).await {
                 Ok(items) if items.is_empty() => {
                     bot.send_message(msg.chat.id, "😔 Список пуст\\.")
-                        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                        .parse_mode(ParseMode::MarkdownV2)
                         .await?;
                 }
                 Ok(items) => {
-                    let mut rows: Vec<Vec<teloxide::types::InlineKeyboardButton>> = Vec::new();
-                    for item in items {
-                        let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
-                        state.navigation_cache.insert(
-                            navigation_id,
-                            NavigationTarget {
-                                owner_id: user_id,
-                                target: item
-                                    .href
-                                    .clone()
-                                    .unwrap_or_else(|| format!("search:{}", item.title)),
-                            },
-                        );
-                        rows.push(vec![teloxide::types::InlineKeyboardButton::callback(
-                            item.title.clone(),
-                            format!("nav:{navigation_id}"),
-                        )]);
-                    }
-                    let markup = teloxide::types::InlineKeyboardMarkup::new(rows);
+                    let markup = InlineKeyboardMarkup::new(cache_nav_rows(&state, user_id, items));
                     let title = if matches!(cmd, Cmd::Authors) {
                         "Авторы"
                     } else {
@@ -187,14 +258,14 @@ pub async fn handle_command(
                         msg.chat.id,
                         format!("📂 *{}* \\(выберите для поиска\\):", title),
                     )
-                    .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .reply_markup(markup)
                     .await?;
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "Navigation failed");
                     bot.send_message(msg.chat.id, "❌ Ошибка при получении списка\\.")
-                        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                        .parse_mode(ParseMode::MarkdownV2)
                         .await?;
                 }
             }
@@ -213,7 +284,7 @@ async fn send_books_with_covers(
     match result {
         Ok(books) if books.is_empty() => {
             bot.send_message(chat_id, "😔 Ничего не найдено\\.")
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
         Ok(books) => {
@@ -232,12 +303,11 @@ async fn send_books_with_covers(
                     },
                 );
 
-                let keyboard = teloxide::types::InlineKeyboardMarkup::new(vec![vec![
-                    teloxide::types::InlineKeyboardButton::callback(
+                let keyboard =
+                    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
                         "📥 Скачать",
                         format!("dl:{id}"),
-                    ),
-                ]]);
+                    )]]);
 
                 if let Some(cover_url) = &book.cover_url {
                     if let Some(cover_bytes) = state.ropds.download_cover(cover_url).await {
@@ -250,7 +320,7 @@ async fn send_books_with_covers(
 
                         bot.send_photo(chat_id, photo)
                             .caption(caption)
-                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .parse_mode(ParseMode::MarkdownV2)
                             .reply_markup(keyboard)
                             .await?;
 
@@ -265,7 +335,7 @@ async fn send_books_with_covers(
                     escape_md(&book.author)
                 );
                 bot.send_message(chat_id, text)
-                    .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .reply_markup(keyboard)
                     .await?;
 
@@ -275,7 +345,7 @@ async fn send_books_with_covers(
         Err(e) => {
             tracing::error!(error = ?e, "Request failed");
             bot.send_message(chat_id, "❌ Ошибка при обращении к ROPDS\\.")
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
     }
@@ -325,41 +395,23 @@ pub async fn handle_callback(
             let chat_id = msg.chat().id;
             let msg_id = msg.id();
 
-            if let Some(path) = target.target.strip_prefix('/') {
-                let path = format!("/{path}");
-                match state.ropds.get_navigation(&path).await {
+            if is_opds_href(&target.target) {
+                match state.ropds.get_navigation(&target.target).await {
                     Ok(items) if !items.is_empty() => {
-                        let mut rows = Vec::new();
-                        for item in items {
-                            let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
-                            state.navigation_cache.insert(
-                                navigation_id,
-                                NavigationTarget {
-                                    owner_id: requester_id,
-                                    target: item
-                                        .href
-                                        .clone()
-                                        .unwrap_or_else(|| format!("search:{}", item.title)),
-                                },
-                            );
-                            rows.push(vec![teloxide::types::InlineKeyboardButton::callback(
-                                item.title,
-                                format!("nav:{navigation_id}"),
-                            )]);
-                        }
+                        let rows = cache_nav_rows(&state, requester_id, items);
                         bot.edit_message_text(chat_id, msg_id, "📂 Выберите вариант:")
-                            .reply_markup(teloxide::types::InlineKeyboardMarkup::new(rows))
+                            .reply_markup(InlineKeyboardMarkup::new(rows))
                             .await?;
                     }
                     Ok(_) => {
                         bot.edit_message_text(chat_id, msg_id, "😔 Список пуст\\.")
-                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .parse_mode(ParseMode::MarkdownV2)
                             .await?;
                     }
                     Err(error) => {
                         tracing::error!(%error, "Navigation failed");
                         bot.edit_message_text(chat_id, msg_id, "❌ Ошибка при получении списка\\.")
-                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .parse_mode(ParseMode::MarkdownV2)
                             .await?;
                     }
                 }
@@ -371,12 +423,8 @@ pub async fn handle_callback(
                 .strip_prefix("search:")
                 .unwrap_or(&target.target);
             let _ = bot
-                .edit_message_text(
-                    chat_id,
-                    msg_id,
-                    format!("🔍 Ищу: *{}*...", escape_md(query)),
-                )
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .edit_message_text(chat_id, msg_id, searching_message(query))
+                .parse_mode(ParseMode::MarkdownV2)
                 .await;
 
             let result = state.ropds.search(query).await;
@@ -414,16 +462,13 @@ pub async fn handle_callback(
     if let Some(msg) = q.message {
         let chat_id = msg.chat().id;
         let msg_id = msg.id();
-        let _ = bot
-            .edit_message_text(chat_id, msg_id, "⏳ Загружаю книгу...")
-            .await;
+        let _ = edit_callback_message(&bot, &msg, "⏳ Загружаю книгу...", None).await;
 
         let _permit = match state.downloads.acquire().await {
             Ok(permit) => permit,
             Err(error) => {
                 tracing::error!(%error, "Download semaphore is closed");
-                let _ = bot
-                    .edit_message_text(chat_id, msg_id, "❌ Загрузка временно недоступна.")
+                let _ = edit_callback_message(&bot, &msg, "❌ Загрузка временно недоступна.", None)
                     .await;
                 return Ok(());
             }
@@ -441,7 +486,7 @@ pub async fn handle_callback(
                         escape_md(&ctx.title),
                         escape_md(&ctx.author)
                     ))
-                    .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .reply_parameters(ReplyParameters::new(msg_id));
 
                 if let Some(cover_url) = &ctx.cover_url {
@@ -457,9 +502,9 @@ pub async fn handle_callback(
                 let _ = tokio::fs::remove_file(&filepath).await;
 
                 if result.is_err() {
-                    let _ = bot
-                        .edit_message_text(chat_id, msg_id, "❌ Ошибка при отправке файла.")
-                        .await;
+                    let _ =
+                        edit_callback_message(&bot, &msg, "❌ Ошибка при отправке файла.", None)
+                            .await;
                 } else {
                     let _ = bot.delete_message(chat_id, msg_id).await;
                 }
@@ -468,23 +513,25 @@ pub async fn handle_callback(
                 let err_msg = e.to_string();
                 if let Some(size) = err_msg.strip_prefix("FILE_TOO_LARGE:") {
                     let mb = size.parse::<u64>().unwrap_or(0) / 1024 / 1024;
-                    let _ = bot
-                        .edit_message_text(
-                            chat_id,
-                            msg_id,
-                            format!(
-                                "⚠️ Файл слишком большой ({mb} МБ)\\.\nСсылка:\n{}",
-                                escape_md(&ctx.url)
-                            ),
-                        )
-                        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
-                        .await;
+                    let _ = edit_callback_message(
+                        &bot,
+                        &msg,
+                        format!(
+                            "⚠️ Файл слишком большой ({mb} МБ)\\.\nСсылка:\n{}",
+                            escape_md(&ctx.url)
+                        ),
+                        Some(ParseMode::MarkdownV2),
+                    )
+                    .await;
                 } else {
                     tracing::error!(error = %e, "Download failed");
-                    let _ = bot
-                        .edit_message_text(chat_id, msg_id, "❌ Не удалось скачать файл\\.")
-                        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
-                        .await;
+                    let _ = edit_callback_message(
+                        &bot,
+                        &msg,
+                        "❌ Не удалось скачать файл\\.",
+                        Some(ParseMode::MarkdownV2),
+                    )
+                    .await;
                 }
             }
         }
@@ -504,4 +551,24 @@ fn escape_md(s: &str) -> String {
         out.push(c);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn searching_message_escapes_markdown_dots() {
+        assert_eq!(searching_message("Дюна"), "🔍 Ищу: *Дюна*\\.\\.\\.");
+        assert_eq!(searching_message("A.B"), "🔍 Ищу: *A\\.B*\\.\\.\\.");
+    }
+
+    #[test]
+    fn truncates_telegram_button_labels() {
+        let long = "а".repeat(80);
+        let label = truncate_button_label(&long);
+        assert_eq!(label.chars().count(), TELEGRAM_BUTTON_TEXT_LIMIT);
+        assert!(label.ends_with('…'));
+        assert_eq!(truncate_button_label("Дюна"), "Дюна");
+    }
 }

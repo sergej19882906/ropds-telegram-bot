@@ -53,10 +53,11 @@ async fn run() -> Result<()> {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(600)).await;
             cleanup_state.download_cache.clear();
+            cleanup_state.navigation_cache.clear();
             cleanup_state
                 .last_activity
                 .retain(|_, instant| instant.elapsed() < Duration::from_secs(3600));
-            tracing::debug!("Download cache cleared");
+            tracing::debug!("Download and navigation caches cleared");
         }
     });
 
