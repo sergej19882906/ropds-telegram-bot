@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-13
+
+### Added
+- Configurable size, concurrency, cooldown, and pagination limits
+- Optional `ALLOW_ALL_USERS` switch and startup warning when the bot is public
+- Cover cache, “show more” pagination, and Telegram `getMe` readiness file
+- Graceful Ctrl-C shutdown and cleanup of leftover download temp files
+
+### Changed
+- Book and cover downloads use async streaming instead of blocking HTTP
+- OPDS feed bodies are size-limited; publications without acquisition links are skipped
+- Release workflow accepts prerelease tags such as `v1.2.3-rc.1`
+- MSRV CI job now runs tests
+
+### Fixed
+- Safe Unicode filename truncation for long Cyrillic titles
+- Author/genre navigation from grouped OPDS feeds and absolute hrefs
+- Download status updates on cover photos and MarkdownV2 search status text
+- Temporary book files are removed on download errors
+- HTTP error bodies are truncated in logs
+
 ## [0.1.6] - 2026-09-11
 
 ### Fixed

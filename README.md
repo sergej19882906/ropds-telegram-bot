@@ -226,9 +226,17 @@ All settings are loaded from environment variables or a `.env` file:
 | `ROPDS_USER` | ❌ | — | HTTP Basic Auth username |
 | `ROPDS_PASSWORD` | ❌ | — | HTTP Basic Auth password |
 | `ALLOWED_USER_IDS` | ❌ | — | Comma-separated allowed Telegram user IDs; empty allows all users |
+| `ALLOW_ALL_USERS` | ❌ | auto | `false` requires `ALLOWED_USER_IDS`; empty/true keeps allow-all |
+| `MAX_BOOK_SIZE_MB` | ❌ | `50` | Maximum book size to send to Telegram |
+| `MAX_COVER_SIZE_MB` | ❌ | `5` | Maximum cover image size |
+| `MAX_FEED_SIZE_MB` | ❌ | `10` | Maximum OPDS JSON response size |
+| `MAX_CONCURRENT_DOWNLOADS` | ❌ | `2` | Parallel book downloads |
+| `REQUEST_COOLDOWN_SECS` | ❌ | `2` | Per-user command/callback cooldown |
+| `BOOKS_PER_PAGE` | ❌ | `5` | Books shown before the “show more” button |
+| `BOT_READY_FILE` | ❌ | — | Written after a successful Telegram `getMe` (used by Docker healthcheck) |
 | `RUST_LOG` | ❌ | `info` | Log level (`trace`, `debug`, `info`, `warn`, `error`) |
 
-The project intentionally uses `rustls` instead of OpenSSL, so a standard Rust toolchain is enough for local builds. Book downloads are limited to 50 MB, covers to 5 MB, and at most two downloads run concurrently. Set `ALLOWED_USER_IDS` for production deployments.
+The project intentionally uses `rustls` instead of OpenSSL, so a standard Rust toolchain is enough for local builds. Book downloads, cover size, feed size, concurrency, and cooldown are configurable; defaults are 50 MB / 5 MB / 10 MB / 2 downloads / 2 seconds. Set `ALLOWED_USER_IDS` (or `ALLOW_ALL_USERS=false`) for production deployments. Search results are shown in pages with a “show more” button.
 
 ## 📖 Commands
 

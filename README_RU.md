@@ -226,9 +226,17 @@ docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 | `ROPDS_USER` | ❌ | — | Имя пользователя HTTP Basic Auth |
 | `ROPDS_PASSWORD` | ❌ | — | Пароль HTTP Basic Auth |
 | `ALLOWED_USER_IDS` | ❌ | — | Разрешённые Telegram user ID через запятую; пустое значение разрешает всех |
+| `ALLOW_ALL_USERS` | ❌ | auto | `false` требует `ALLOWED_USER_IDS`; пустое/`true` оставляет доступ для всех |
+| `MAX_BOOK_SIZE_MB` | ❌ | `50` | Максимальный размер книги для отправки в Telegram |
+| `MAX_COVER_SIZE_MB` | ❌ | `5` | Максимальный размер обложки |
+| `MAX_FEED_SIZE_MB` | ❌ | `10` | Максимальный размер JSON-ответа OPDS |
+| `MAX_CONCURRENT_DOWNLOADS` | ❌ | `2` | Параллельные скачивания книг |
+| `REQUEST_COOLDOWN_SECS` | ❌ | `2` | Пауза между командами/кнопками одного пользователя |
+| `BOOKS_PER_PAGE` | ❌ | `5` | Сколько книг показать до кнопки «Показать ещё» |
+| `BOT_READY_FILE` | ❌ | — | Файл после успешного Telegram `getMe` (для Docker healthcheck) |
 | `RUST_LOG` | ❌ | `info` | Уровень логирования |
 
-Проект намеренно использует `rustls` вместо OpenSSL, поэтому для сборки достаточно обычного Rust toolchain. Размер книги ограничен 50 МБ, размер обложки — 5 МБ, одновременно выполняются не более двух скачиваний. Для production рекомендуется задать `ALLOWED_USER_IDS`.
+Проект намеренно использует `rustls` вместо OpenSSL, поэтому для сборки достаточно обычного Rust toolchain. Лимиты книги, обложки, OPDS-ответа, параллельных загрузок и паузы между запросами задаются через env; значения по умолчанию — 50 МБ / 5 МБ / 10 МБ / 2 загрузки / 2 секунды. Для production задайте `ALLOWED_USER_IDS` или `ALLOW_ALL_USERS=false`. Результаты поиска показываются страницами с кнопкой «Показать ещё».
 
 ## 📖 Команды
 

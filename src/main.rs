@@ -12,7 +12,7 @@ use teloxide::prelude::*;
 
 use crate::config::Config;
 use crate::handlers::{handle_callback, handle_command, BotState, Cmd, SharedState};
-use crate::ropds::RopdsClient;
+use crate::ropds::{cleanup_downloads_dir, ClientLimits, RopdsClient};
 
 #[tokio::main]
 async fn main() {
@@ -33,31 +33,68 @@ async fn run() -> Result<()> {
     let cfg = Config::from_env().context("Failed to load config")?;
     tracing::info!(ropds_url = %cfg.ropds_url, "Starting ROPDS Telegram bot");
 
-    let ropds = RopdsClient::new(cfg.ropds_url, cfg.ropds_user, cfg.ropds_password)
-        .context("Failed to build ROPDS client")?;
+    cleanup_downloads_dir();
+
+    let ropds = RopdsClient::new(
+        cfg.ropds_url,
+        cfg.ropds_user,
+        cfg.ropds_password,
+        ClientLimits {
+            max_book_size: cfg.max_book_size,
+            max_cover_size: cfg.max_cover_size,
+            max_feed_size: cfg.max_feed_size,
+        },
+    )
+    .context("Failed to build ROPDS client")?;
 
     let state: SharedState = Arc::new(BotState {
         ropds,
         download_cache: DashMap::new(),
         navigation_cache: DashMap::new(),
+        results_cache: DashMap::new(),
+        cover_cache: DashMap::new(),
         next_id: AtomicU64::new(1),
         allowed_user_ids: cfg.allowed_user_ids,
+        allow_all_users: cfg.allow_all_users,
         last_activity: DashMap::new(),
-        downloads: Arc::new(tokio::sync::Semaphore::new(2)),
+        downloads: Arc::new(tokio::sync::Semaphore::new(cfg.max_concurrent_downloads)),
+        request_cooldown: cfg.request_cooldown,
+        books_per_page: cfg.books_per_page,
     });
 
     let bot = Bot::new(&cfg.bot_token);
+    let me = bot
+        .get_me()
+        .await
+        .context("Failed to call Telegram getMe")?;
+    tracing::info!(username = ?me.username, "Telegram bot authorized");
+    if let Some(ready_file) = &cfg.ready_file {
+        if let Some(parent) = ready_file.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        tokio::fs::write(ready_file, b"ok")
+            .await
+            .with_context(|| format!("Failed to write ready file {}", ready_file.display()))?;
+    }
 
     let cleanup_state = Arc::clone(&state);
+    let ready_file = cfg.ready_file.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+            tokio::time::sleep(Duration::from_secs(600)).await;
             cleanup_state.download_cache.clear();
             cleanup_state.navigation_cache.clear();
+            cleanup_state.results_cache.clear();
+            cleanup_state
+                .cover_cache
+                .retain(|_, cached| cached.created.elapsed() < Duration::from_secs(3600));
             cleanup_state
                 .last_activity
                 .retain(|_, instant| instant.elapsed() < Duration::from_secs(3600));
-            tracing::debug!("Download and navigation caches cleared");
+            if let Some(path) = &ready_file {
+                let _ = tokio::fs::write(path, b"ok").await;
+            }
+            tracing::debug!("Caches cleaned");
         }
     });
 
@@ -69,14 +106,21 @@ async fn run() -> Result<()> {
         )
         .branch(Update::filter_callback_query().endpoint(handle_callback));
 
-    tracing::info!("Bot is running. Press Ctrl-C to stop.");
-
-    Dispatcher::builder(bot, handler)
+    let mut dispatcher = Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![state])
-        // ИСПРАВЛЕНИЕ: метод .enable_ctrlc_handler() удален, так как он удален из teloxide 0.13
-        .build()
-        .dispatch()
-        .await;
+        .build();
+    let shutdown_token = dispatcher.shutdown_token();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("Ctrl-C received, shutting down");
+            if let Ok(shutdown) = shutdown_token.shutdown() {
+                shutdown.await;
+            }
+        }
+    });
 
+    tracing::info!("Bot is running. Press Ctrl-C to stop.");
+    dispatcher.dispatch().await;
+    cleanup_downloads_dir();
     Ok(())
 }

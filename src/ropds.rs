@@ -1,18 +1,25 @@
 use anyhow::{Context, Result};
-use reqwest::{Client, Url};
+use reqwest::{Client, Response, Url};
 use serde::Deserialize;
 use serde_json::Value;
-use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::AsyncWriteExt;
 
-const MAX_BOOK_SIZE: u64 = 50 * 1024 * 1024;
-const MAX_COVER_SIZE: u64 = 5 * 1024 * 1024;
 const OPDS_BOOKS_TIMEOUT: Duration = Duration::from_secs(180);
 const OPDS_FEED_TIMEOUT: Duration = Duration::from_secs(60);
+const OPDS_COVER_TIMEOUT: Duration = Duration::from_secs(15);
+const OPDS_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_FEED_REDIRECTS: u32 = 5;
 const MAX_FILENAME_STEM: usize = 100;
 const LOG_BODY_LIMIT: usize = 512;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClientLimits {
+    pub max_book_size: u64,
+    pub max_cover_size: u64,
+    pub max_feed_size: u64,
+}
 
 #[derive(Debug, Clone)]
 pub struct Book {
@@ -40,11 +47,16 @@ pub struct NavItem {
 pub struct RopdsClient {
     http: Client,
     base_url: Url,
-    auth_header: Option<String>,
+    limits: ClientLimits,
 }
 
 impl RopdsClient {
-    pub fn new(base_url: String, user: Option<String>, password: Option<String>) -> Result<Self> {
+    pub fn new(
+        base_url: String,
+        user: Option<String>,
+        password: Option<String>,
+        limits: ClientLimits,
+    ) -> Result<Self> {
         let base_url = Url::parse(&base_url).context("Invalid ROPDS URL")?;
         if !matches!(base_url.scheme(), "http" | "https") || base_url.host().is_none() {
             anyhow::bail!("ROPDS URL must use http or https and include a host");
@@ -55,7 +67,7 @@ impl RopdsClient {
             .redirect(reqwest::redirect::Policy::none())
             .user_agent("ropds-telegram-bot/0.1");
 
-        let auth_header = if let (Some(u), Some(p)) = (user, password) {
+        if let (Some(u), Some(p)) = (user, password) {
             let creds = format!("{u}:{p}");
             let encoded = base64::Engine::encode(
                 &base64::engine::general_purpose::STANDARD,
@@ -66,16 +78,12 @@ impl RopdsClient {
             let mut headers = reqwest::header::HeaderMap::new();
             headers.insert(reqwest::header::AUTHORIZATION, header_val.parse()?);
             builder = builder.default_headers(headers);
-
-            Some(header_val)
-        } else {
-            None
-        };
+        }
 
         Ok(Self {
             http: builder.build()?,
             base_url,
-            auth_header,
+            limits,
         })
     }
 
@@ -105,145 +113,119 @@ impl RopdsClient {
     /// сопровождаются вручную: каждый переход проверяется
     /// `ensure_allowed_url`, чтобы Basic Auth не ушёл на посторонний хост.
     async fn fetch_feed(&self, url: Url, timeout: Duration) -> Result<Opds2Feed> {
+        tracing::info!(url = %url, "OPDS 2.0 feed request");
+        let response = self
+            .send_following_redirects(url, timeout, "application/opds+json")
+            .await
+            .context("Failed to send request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = read_limited_bytes(response, self.limits.max_feed_size)
+                .await
+                .unwrap_or_default();
+            let body = String::from_utf8_lossy(&body);
+            tracing::error!(
+                status = %status,
+                body = %truncate_for_log(&body, LOG_BODY_LIMIT),
+                "ROPDS error"
+            );
+            anyhow::bail!("ROPDS returned status {status}");
+        }
+
+        let body = read_limited_bytes(response, self.limits.max_feed_size)
+            .await
+            .context("Failed to read response body")?;
+        let body = String::from_utf8(body).context("OPDS feed is not valid UTF-8")?;
+        serde_json::from_str(&body).map_err(|e| {
+            tracing::error!(error = %e, "Serde parsing failed");
+            anyhow::anyhow!("Failed to parse OPDS 2.0 JSON response: {}", e)
+        })
+    }
+
+    async fn send_following_redirects(
+        &self,
+        url: Url,
+        timeout: Duration,
+        accept: &str,
+    ) -> Result<Response> {
         let mut current_url = url;
         for _ in 0..=MAX_FEED_REDIRECTS {
             ensure_allowed_url(&current_url, &self.base_url)?;
-            tracing::info!(url = %current_url, "OPDS 2.0 feed request");
-
             let response = self
                 .http
                 .get(current_url.clone())
                 .timeout(timeout)
-                .header(reqwest::header::ACCEPT, "application/opds+json")
+                .header(reqwest::header::ACCEPT, accept)
                 .send()
-                .await
-                .context("Failed to send request")?;
+                .await?;
 
-            if response.status().is_redirection() {
-                let location = response
-                    .headers()
-                    .get(reqwest::header::LOCATION)
-                    .context("Redirect response did not include a Location header")?
-                    .to_str()
-                    .context("Redirect Location is not valid UTF-8")?
-                    .to_owned();
-                current_url = current_url.join(&location)?;
-                continue;
+            if !response.status().is_redirection() {
+                return Ok(response);
             }
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let body = response.text().await.unwrap_or_default();
-                tracing::error!(
-                    status = %status,
-                    body = %truncate_for_log(&body, LOG_BODY_LIMIT),
-                    "ROPDS error"
-                );
-                anyhow::bail!("ROPDS returned status {status}");
-            }
-
-            let body = response
-                .text()
-                .await
-                .context("Failed to read response body")?;
-            return serde_json::from_str(&body).map_err(|e| {
-                tracing::error!(error = %e, "Serde parsing failed");
-                anyhow::anyhow!("Failed to parse OPDS 2.0 JSON response: {}", e)
-            });
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .context("Redirect response did not include a Location header")?
+                .to_str()
+                .context("Redirect Location is not valid UTF-8")?
+                .to_owned();
+            current_url = current_url.join(&location)?;
         }
-        anyhow::bail!("Too many redirects while fetching the OPDS feed");
+        anyhow::bail!("Too many redirects while fetching the OPDS feed")
     }
 
     pub async fn download_book(&self, ctx: &DownloadContext) -> Result<(PathBuf, String)> {
         let url = Url::parse(&ctx.url).context("Invalid book URL")?;
-        ensure_allowed_url(&url, &self.base_url)?;
-        let title = ctx.title.clone();
-        let author = ctx.author.clone();
-        let auth_header = self.auth_header.clone();
-        let base_url = self.base_url.clone();
+        tracing::info!(url = %url, "Starting book download");
+        let response = self
+            .send_following_redirects(url, OPDS_DOWNLOAD_TIMEOUT, "*/*")
+            .await
+            .context("Failed to send request")?;
 
-        let result = tokio::task::spawn_blocking(move || {
-            tracing::info!(url = %url, "Starting book download in blocking thread");
+        if !response.status().is_success() {
+            anyhow::bail!("Download failed with status {}", response.status());
+        }
 
-            let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(120))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|e| anyhow::anyhow!("Client build error: {}", e))?;
-            let mut current_url = url;
-            let mut redirects = 0;
-            let response = loop {
-                if redirects > 5 {
-                    anyhow::bail!("Too many redirects while downloading book");
-                }
-                let mut request = client.get(current_url.clone());
-                if let Some(header) = &auth_header {
-                    request = request.header(reqwest::header::AUTHORIZATION, header);
-                }
-                let response = request
-                    .send()
-                    .map_err(|e| anyhow::anyhow!("Request error: {}", e))?;
-                if !response.status().is_redirection() {
-                    break response;
-                }
-                redirects += 1;
-                let location = response
-                    .headers()
-                    .get(reqwest::header::LOCATION)
-                    .context("Redirect response did not include a Location header")?;
-                current_url = current_url.join(
-                    location
-                        .to_str()
-                        .context("Redirect Location is not valid UTF-8")?,
-                )?;
-                ensure_allowed_url(&current_url, &base_url)?;
-            };
+        let content_length = response.content_length().unwrap_or(0);
+        if content_length > self.limits.max_book_size {
+            anyhow::bail!("FILE_TOO_LARGE:{content_length}");
+        }
 
-            if !response.status().is_success() {
-                anyhow::bail!("Download failed with status {}", response.status());
-            }
+        let safe_title = sanitize_filename(&ctx.title);
+        let safe_author = sanitize_filename(&ctx.author);
+        let extension = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(extension_from_content_type)
+            .unwrap_or("fb2");
+        let filename = format!("{} - {}.{extension}", safe_title, safe_author);
 
-            let content_length = response.content_length().unwrap_or(0);
-            if content_length > MAX_BOOK_SIZE {
-                anyhow::bail!("FILE_TOO_LARGE:{content_length}");
-            }
+        let download_dir = downloads_dir()?;
+        tokio::fs::create_dir_all(&download_dir).await?;
+        let unique_suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let filepath = download_dir.join(format!(
+            ".{}-{}-{filename}",
+            std::process::id(),
+            unique_suffix
+        ));
 
-            let safe_title = sanitize_filename(&title);
-            let safe_author = sanitize_filename(&author);
-            let extension = response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .and_then(extension_from_content_type)
-                .unwrap_or("fb2");
-            let filename = format!("{} - {}.{extension}", safe_title, safe_author);
-
-            let download_dir = std::env::current_dir()?.join("downloads");
-            std::fs::create_dir_all(&download_dir)?;
-            let unique_suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-            let filepath = download_dir.join(format!(
-                ".{}-{}-{filename}",
-                std::process::id(),
-                unique_suffix
-            ));
-
-            tracing::info!(path = ?filepath, "Saving book to disk");
-            let mut file = std::fs::File::create(&filepath)?;
-            let bytes_written = std::io::copy(
-                &mut response.take(MAX_BOOK_SIZE.saturating_add(1)),
-                &mut file,
-            )?;
-            if bytes_written > MAX_BOOK_SIZE {
-                std::fs::remove_file(&filepath)?;
-                anyhow::bail!("FILE_TOO_LARGE:{}", bytes_written);
-            }
-
-            Ok::<(PathBuf, String), anyhow::Error>((filepath, filename))
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("Task join error: {}", e))??;
-
-        Ok(result)
+        tracing::info!(path = ?filepath, "Saving book to disk");
+        let mut guard = TempPath::create(&filepath).await?;
+        let bytes_written = write_limited_file(
+            guard.file.as_mut().expect("temp file"),
+            response,
+            self.limits.max_book_size,
+        )
+        .await?;
+        if bytes_written > self.limits.max_book_size {
+            anyhow::bail!("FILE_TOO_LARGE:{bytes_written}");
+        }
+        guard.file.as_mut().expect("temp file").flush().await?;
+        guard.keep();
+        Ok((filepath, filename))
     }
 
     pub async fn download_cover(&self, url: &str) -> Option<Vec<u8>> {
@@ -252,58 +234,109 @@ impl RopdsClient {
             tracing::warn!(url = %url, "Rejected cover URL outside ROPDS origin");
             return None;
         }
-        let auth_header = self.auth_header.clone();
-        let base_url = self.base_url.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(15));
-            let client = client
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .ok()?;
-            let mut current_url = url;
-            let mut redirects = 0;
-            let response = loop {
-                if redirects > 5 {
-                    return None;
-                }
-                let mut request = client.get(current_url.clone());
-                if let Some(header) = &auth_header {
-                    request = request.header(reqwest::header::AUTHORIZATION, header);
-                }
-                let response = request.send().ok()?;
-                if !response.status().is_redirection() {
-                    break response;
-                }
-                redirects += 1;
-                let location = response.headers().get(reqwest::header::LOCATION)?;
-                current_url = current_url.join(location.to_str().ok()?).ok()?;
-                ensure_allowed_url(&current_url, &base_url).ok()?;
-            };
-
-            if !response.status().is_success() {
-                return None;
-            }
-
-            if response.content_length().unwrap_or(0) > MAX_COVER_SIZE {
-                return None;
-            }
-            let mut body = Vec::new();
-            response
-                .take(MAX_COVER_SIZE.saturating_add(1))
-                .read_to_end(&mut body)
-                .ok()?;
-            if body.len() as u64 > MAX_COVER_SIZE {
-                return None;
-            }
-            Some(body)
-        })
-        .await
-        .ok()
-        .flatten();
-
-        result
+        let response = self
+            .send_following_redirects(url, OPDS_COVER_TIMEOUT, "image/*")
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        if response.content_length().unwrap_or(0) > self.limits.max_cover_size {
+            return None;
+        }
+        let body = read_limited_bytes(response, self.limits.max_cover_size)
+            .await
+            .ok()?;
+        if body.len() as u64 > self.limits.max_cover_size {
+            return None;
+        }
+        Some(body)
     }
+}
+
+struct TempPath {
+    path: PathBuf,
+    file: Option<tokio::fs::File>,
+    keep: bool,
+}
+
+impl TempPath {
+    async fn create(path: &Path) -> Result<Self> {
+        let file = tokio::fs::File::create(path).await?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            file: Some(file),
+            keep: false,
+        })
+    }
+
+    fn keep(&mut self) {
+        self.keep = true;
+    }
+}
+
+impl Drop for TempPath {
+    fn drop(&mut self) {
+        if !self.keep {
+            self.file.take();
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+pub fn downloads_dir() -> Result<PathBuf> {
+    Ok(std::env::current_dir()?.join("downloads"))
+}
+
+pub fn cleanup_downloads_dir() {
+    let Ok(dir) = downloads_dir() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with('.'))
+        {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn exceeds_limit(current: u64, incoming: usize, max: u64) -> bool {
+    current.saturating_add(incoming as u64) > max
+}
+
+async fn read_limited_bytes(mut response: Response, max: u64) -> Result<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if exceeds_limit(body.len() as u64, chunk.len(), max) {
+            anyhow::bail!("response body exceeded {max} bytes");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+async fn write_limited_file(
+    file: &mut tokio::fs::File,
+    mut response: Response,
+    max: u64,
+) -> Result<u64> {
+    let mut written = 0_u64;
+    while let Some(chunk) = response.chunk().await? {
+        if exceeds_limit(written, chunk.len(), max) {
+            written = written.saturating_add(chunk.len() as u64);
+            break;
+        }
+        file.write_all(&chunk).await?;
+        written += chunk.len() as u64;
+    }
+    Ok(written)
 }
 
 fn ensure_allowed_url(url: &Url, base_url: &Url) -> Result<()> {
@@ -443,7 +476,24 @@ impl Opds2Feed {
         for group in self.groups {
             pubs.extend(group.publications);
         }
-        pubs.into_iter().map(|p| p.into_book(base_url)).collect()
+        let mut skipped = 0;
+        let books = pubs
+            .into_iter()
+            .filter_map(|publication| {
+                if publication.acquisition_href().is_none() {
+                    skipped += 1;
+                    return None;
+                }
+                Some(publication.into_book(base_url))
+            })
+            .collect();
+        if skipped > 0 {
+            tracing::warn!(
+                skipped,
+                "Skipped OPDS publications without an acquisition link"
+            );
+        }
+        books
     }
 
     fn into_nav_items(self, base_url: &Url) -> Vec<NavItem> {
@@ -482,10 +532,7 @@ impl Opds2Publication {
     fn acquisition_href(&self) -> Option<&str> {
         self.links.iter().find_map(|link| {
             let rel = link.rel.as_deref().unwrap_or("");
-            let is_acquisition = rel == "http://opds-spec.org/acquisition"
-                || rel == "acquisition"
-                || rel == "http://opds-spec.org/acquisition/open-access";
-            (is_acquisition && !link.href.is_empty()).then_some(link.href.as_str())
+            (is_acquisition_rel(rel) && !link.href.is_empty()).then_some(link.href.as_str())
         })
     }
 
@@ -537,6 +584,10 @@ impl Opds2Publication {
             cover_url,
         }
     }
+}
+
+fn is_acquisition_rel(rel: &str) -> bool {
+    rel == "acquisition" || rel.contains("opds-spec.org/acquisition")
 }
 
 fn resolve_href(base_url: &Url, href: &str) -> String {
@@ -614,6 +665,7 @@ mod tests {
         assert_eq!(sanitize_filename("a/b:c"), "a_b_c");
         assert_eq!(sanitize_filename("  Дюна  "), "Дюна");
         assert_eq!(sanitize_filename("///"), "book");
+        assert!(sanitize_filename(&"📚".repeat(80)).ends_with("..."));
     }
 
     #[test]
@@ -757,5 +809,64 @@ mod tests {
         assert!(item.download.is_none());
         assert!(item.href.is_none());
         assert_eq!(item.title, "Дюна");
+    }
+
+    #[test]
+    fn skips_publications_without_acquisition_in_search_results() {
+        let base = Url::parse("http://library.example.test:8081").unwrap();
+        let feed = Opds2Feed {
+            publications: vec![
+                Opds2Publication {
+                    metadata: Opds2Metadata {
+                        title: "Missing".to_string(),
+                        author: Value::Null,
+                        authors: Value::Null,
+                    },
+                    links: Vec::new(),
+                    images: Vec::new(),
+                },
+                Opds2Publication {
+                    metadata: Opds2Metadata {
+                        title: "Book".to_string(),
+                        author: Value::String("Author".to_string()),
+                        authors: Value::Null,
+                    },
+                    links: vec![Opds2Link {
+                        href: "/opds/download/1/".to_string(),
+                        rel: Some("http://opds-spec.org/acquisition/open-access".to_string()),
+                        r#type: None,
+                    }],
+                    images: Vec::new(),
+                },
+            ],
+            groups: Vec::new(),
+            navigation: Vec::new(),
+        };
+        let books = feed.into_books(&base);
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].title, "Book");
+    }
+
+    #[test]
+    fn extracts_authors_from_string_object_and_array() {
+        assert_eq!(
+            extract_author_name(&Value::String("Herbert".into())).as_deref(),
+            Some("Herbert")
+        );
+        assert_eq!(
+            extract_author_name(&serde_json::json!({"name": "Herbert"})).as_deref(),
+            Some("Herbert")
+        );
+        assert_eq!(
+            extract_author_name(&serde_json::json!([{"name": "Herbert"}, {"name": "Other"}]))
+                .as_deref(),
+            Some("Herbert")
+        );
+    }
+
+    #[test]
+    fn size_limit_detects_overflow() {
+        assert!(!exceeds_limit(10, 5, 15));
+        assert!(exceeds_limit(10, 6, 15));
     }
 }

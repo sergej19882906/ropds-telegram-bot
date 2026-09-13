@@ -14,6 +14,7 @@ use teloxide::utils::command::BotCommands;
 use crate::ropds::{is_opds_href, Book, DownloadContext, NavItem, RopdsClient};
 
 const TELEGRAM_BUTTON_TEXT_LIMIT: usize = 64;
+const COVER_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Команды бота:")]
@@ -34,10 +35,15 @@ pub struct BotState {
     pub ropds: RopdsClient,
     pub download_cache: DashMap<u64, CachedDownload>,
     pub navigation_cache: DashMap<u64, NavigationTarget>,
+    pub results_cache: DashMap<u64, CachedResults>,
+    pub cover_cache: DashMap<String, CachedCover>,
     pub next_id: AtomicU64,
     pub allowed_user_ids: HashSet<u64>,
+    pub allow_all_users: bool,
     pub last_activity: DashMap<u64, Instant>,
     pub downloads: Arc<tokio::sync::Semaphore>,
+    pub request_cooldown: Duration,
+    pub books_per_page: usize,
 }
 
 pub type SharedState = Arc<BotState>;
@@ -54,6 +60,19 @@ pub struct NavigationTarget {
     pub target: String,
 }
 
+#[derive(Clone)]
+pub struct CachedResults {
+    pub owner_id: u64,
+    pub books: Vec<Book>,
+    pub offset: usize,
+}
+
+#[derive(Clone)]
+pub struct CachedCover {
+    pub created: Instant,
+    pub bytes: Vec<u8>,
+}
+
 fn message_user_id(msg: &Message) -> Option<u64> {
     msg.from.as_ref().map(|user| user.id.0)
 }
@@ -63,14 +82,14 @@ fn callback_user_id(q: &teloxide::types::CallbackQuery) -> u64 {
 }
 
 fn is_allowed(state: &SharedState, user_id: u64) -> bool {
-    state.allowed_user_ids.is_empty() || state.allowed_user_ids.contains(&user_id)
+    state.allow_all_users || state.allowed_user_ids.contains(&user_id)
 }
 
 fn allow_request(state: &SharedState, user_id: u64) -> bool {
     let now = Instant::now();
     match state.last_activity.entry(user_id) {
         dashmap::mapref::entry::Entry::Occupied(mut entry) => {
-            if now.duration_since(*entry.get()) < Duration::from_secs(2) {
+            if now.duration_since(*entry.get()) < state.request_cooldown {
                 return false;
             }
             entry.insert(now);
@@ -220,14 +239,14 @@ pub async fn handle_command(
                 return Ok(());
             }
             let result = state.ropds.search(&query).await;
-            send_books_with_covers(&bot, msg.chat.id, user_id, &state, &result).await?;
+            send_book_results(&bot, msg.chat.id, user_id, &state, result).await?;
         }
         Cmd::Recent => {
             let _ = bot
                 .send_chat_action(msg.chat.id, teloxide::types::ChatAction::Typing)
                 .await;
             let result = state.ropds.get_recent_books().await;
-            send_books_with_covers(&bot, msg.chat.id, user_id, &state, &result).await?;
+            send_book_results(&bot, msg.chat.id, user_id, &state, result).await?;
         }
         Cmd::Authors | Cmd::Genres => {
             let _ = bot
@@ -274,12 +293,12 @@ pub async fn handle_command(
     Ok(())
 }
 
-async fn send_books_with_covers(
+async fn send_book_results(
     bot: &Bot,
     chat_id: teloxide::types::ChatId,
     owner_id: u64,
     state: &SharedState,
-    result: &anyhow::Result<Vec<Book>>,
+    result: anyhow::Result<Vec<Book>>,
 ) -> ResponseResult<()> {
     match result {
         Ok(books) if books.is_empty() => {
@@ -288,59 +307,7 @@ async fn send_books_with_covers(
                 .await?;
         }
         Ok(books) => {
-            for book in books.iter().take(10) {
-                let id = state.next_id.fetch_add(1, Ordering::SeqCst);
-                state.download_cache.insert(
-                    id,
-                    CachedDownload {
-                        owner_id,
-                        context: DownloadContext {
-                            url: book.url.clone(),
-                            title: book.title.clone(),
-                            author: book.author.clone(),
-                            cover_url: book.cover_url.clone(),
-                        },
-                    },
-                );
-
-                let keyboard =
-                    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                        "📥 Скачать",
-                        format!("dl:{id}"),
-                    )]]);
-
-                if let Some(cover_url) = &book.cover_url {
-                    if let Some(cover_bytes) = state.ropds.download_cover(cover_url).await {
-                        let caption = format!(
-                            "📚 *{}*\n👤 *Автор:* {}\n\nНажмите кнопку ниже, чтобы скачать\\.",
-                            escape_md(&book.title),
-                            escape_md(&book.author)
-                        );
-                        let photo = InputFile::memory(cover_bytes).file_name("cover.jpg");
-
-                        bot.send_photo(chat_id, photo)
-                            .caption(caption)
-                            .parse_mode(ParseMode::MarkdownV2)
-                            .reply_markup(keyboard)
-                            .await?;
-
-                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                        continue;
-                    }
-                }
-
-                let text = format!(
-                    "📚 *{}*\n👤 *Автор:* {}\n\nНажмите кнопку ниже, чтобы скачать\\.",
-                    escape_md(&book.title),
-                    escape_md(&book.author)
-                );
-                bot.send_message(chat_id, text)
-                    .parse_mode(ParseMode::MarkdownV2)
-                    .reply_markup(keyboard)
-                    .await?;
-
-                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            }
+            send_book_page(bot, chat_id, owner_id, state, books, 0).await?;
         }
         Err(e) => {
             tracing::error!(error = ?e, "Request failed");
@@ -350,6 +317,116 @@ async fn send_books_with_covers(
         }
     }
     Ok(())
+}
+
+async fn send_book_page(
+    bot: &Bot,
+    chat_id: teloxide::types::ChatId,
+    owner_id: u64,
+    state: &SharedState,
+    books: Vec<Book>,
+    offset: usize,
+) -> ResponseResult<()> {
+    let page_size = state.books_per_page;
+    let total = books.len();
+    let page = books.iter().skip(offset).take(page_size);
+    for book in page {
+        send_book_card(bot, chat_id, owner_id, state, book).await?;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+
+    let next_offset = offset.saturating_add(page_size);
+    if next_offset < total {
+        let remaining = total - next_offset;
+        let id = state.next_id.fetch_add(1, Ordering::SeqCst);
+        state.results_cache.insert(
+            id,
+            CachedResults {
+                owner_id,
+                books,
+                offset: next_offset,
+            },
+        );
+        bot.send_message(
+            chat_id,
+            format!("Показано {next_offset} из {total}. Нажмите, чтобы увидеть ещё."),
+        )
+        .reply_markup(InlineKeyboardMarkup::new(vec![vec![
+            InlineKeyboardButton::callback(
+                format!("📄 Показать ещё ({remaining})"),
+                format!("more:{id}"),
+            ),
+        ]]))
+        .await?;
+    }
+    Ok(())
+}
+
+async fn send_book_card(
+    bot: &Bot,
+    chat_id: teloxide::types::ChatId,
+    owner_id: u64,
+    state: &SharedState,
+    book: &Book,
+) -> ResponseResult<()> {
+    let id = state.next_id.fetch_add(1, Ordering::SeqCst);
+    state.download_cache.insert(
+        id,
+        CachedDownload {
+            owner_id,
+            context: DownloadContext {
+                url: book.url.clone(),
+                title: book.title.clone(),
+                author: book.author.clone(),
+                cover_url: book.cover_url.clone(),
+            },
+        },
+    );
+
+    let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        "📥 Скачать",
+        format!("dl:{id}"),
+    )]]);
+    let text = format!(
+        "📚 *{}*\n👤 *Автор:* {}\n\nНажмите кнопку ниже, чтобы скачать\\.",
+        escape_md(&book.title),
+        escape_md(&book.author)
+    );
+
+    if let Some(cover_url) = &book.cover_url {
+        if let Some(cover_bytes) = cached_cover(state, cover_url).await {
+            let photo = InputFile::memory(cover_bytes).file_name("cover.jpg");
+            bot.send_photo(chat_id, photo)
+                .caption(text)
+                .parse_mode(ParseMode::MarkdownV2)
+                .reply_markup(keyboard)
+                .await?;
+            return Ok(());
+        }
+    }
+
+    bot.send_message(chat_id, text)
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(keyboard)
+        .await?;
+    Ok(())
+}
+
+async fn cached_cover(state: &SharedState, url: &str) -> Option<Vec<u8>> {
+    if let Some(cached) = state.cover_cache.get(url) {
+        if cached.created.elapsed() < COVER_CACHE_TTL {
+            return Some(cached.bytes.clone());
+        }
+    }
+    let bytes = state.ropds.download_cover(url).await?;
+    state.cover_cache.insert(
+        url.to_string(),
+        CachedCover {
+            created: Instant::now(),
+            bytes: bytes.clone(),
+        },
+    );
+    Some(bytes)
 }
 
 pub async fn handle_callback(
@@ -377,6 +454,26 @@ pub async fn handle_callback(
     let Some(data) = q.data.clone() else {
         return Ok(());
     };
+
+    if let Some(id_str) = data.strip_prefix("more:") {
+        let _ = bot.answer_callback_query(&q.id).await;
+        let Ok(id) = id_str.parse::<u64>() else {
+            return Ok(());
+        };
+        let Some(page) = state.results_cache.get(&id).map(|value| value.clone()) else {
+            return Ok(());
+        };
+        if page.owner_id != requester_id {
+            return Ok(());
+        }
+        state.results_cache.remove(&id);
+        if let Some(msg) = &q.message {
+            let chat_id = msg.chat().id;
+            let _ =
+                send_book_page(&bot, chat_id, requester_id, &state, page.books, page.offset).await;
+        }
+        return Ok(());
+    }
 
     if let Some(id_str) = data.strip_prefix("nav:") {
         let _ = bot.answer_callback_query(&q.id).await;
@@ -428,7 +525,7 @@ pub async fn handle_callback(
                 .await;
 
             let result = state.ropds.search(query).await;
-            let _ = send_books_with_covers(&bot, chat_id, requester_id, &state, &result).await;
+            let _ = send_book_results(&bot, chat_id, requester_id, &state, result).await;
         }
         return Ok(());
     }
@@ -490,7 +587,7 @@ pub async fn handle_callback(
                     .reply_parameters(ReplyParameters::new(msg_id));
 
                 if let Some(cover_url) = &ctx.cover_url {
-                    if let Some(cover_bytes) = state.ropds.download_cover(cover_url).await {
+                    if let Some(cover_bytes) = cached_cover(&state, cover_url).await {
                         if cover_bytes.len() < 200 * 1024 {
                             let thumb = InputFile::memory(cover_bytes).file_name("cover.jpg");
                             doc_builder = doc_builder.thumbnail(thumb);

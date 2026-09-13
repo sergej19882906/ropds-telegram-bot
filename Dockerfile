@@ -45,10 +45,11 @@ USER bot
 
 # Переменные окружения по умолчанию
 ENV RUST_LOG=info
+ENV BOT_READY_FILE=/tmp/ropds-bot-ready
 
-# Проверка работоспособности: основной процесс контейнера должен быть запущен.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["sh", "-c", "kill -0 1"]
+# Файл создаётся после успешного getMe; PID-проверка оставлена как запасной вариант.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["sh", "-c", "test -f /tmp/ropds-bot-ready || kill -0 1"]
 
 # Запуск бота
 ENTRYPOINT ["ropds-telegram-bot"]
