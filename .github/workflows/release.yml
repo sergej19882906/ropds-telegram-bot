@@ -123,21 +123,10 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Generate release notes
-        run: |
-          if [ -f CHANGELOG.md ]; then
-            TAG=${GITHUB_REF_NAME}
-            awk "/^## [${TAG#v}]/{flag=1;next}/^## [/{flag=0}flag" CHANGELOG.md > notes.md
-          fi
-          if [ ! -s notes.md ]; then
-            echo "Release ${GITHUB_REF_NAME}" > notes.md
-          fi
-
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          body_path: notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
