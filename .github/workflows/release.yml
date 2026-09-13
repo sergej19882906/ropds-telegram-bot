@@ -127,7 +127,8 @@ jobs:
         run: |
           if [ -f CHANGELOG.md ]; then
             TAG=${GITHUB_REF_NAME}
-            awk "/^## [${TAG#v}]/{flag=1;next}/^## [/{flag=0}flag" CHANGELOG.md > notes.md
+            # Исправлено: экранированы квадратные скобки \[ и \]
+            awk "/^## \\[${TAG#v}\\]/{flag=1;next}/^## \\[/{flag=0}flag" CHANGELOG.md > notes.md
           fi
           if [ ! -s notes.md ]; then
             echo "Release ${GITHUB_REF_NAME}" > notes.md
