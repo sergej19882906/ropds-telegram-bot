@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture shifted to stateless using Redis `StateRepository`
 - Updated documentation and `.env.example` to reflect new requirements
 
-## [Unreleased]
+### Fixed
+- Minor bug fixes and stability improvements
 
 ## [0.1.7] - 2026-09-13
 
