@@ -225,6 +225,7 @@ All settings are loaded from environment variables or a `.env` file:
 | `ROPDS_URL` | ❌ | `http://localhost:8081` | ROPDS server URL |
 | `ROPDS_USER` | ❌ | — | HTTP Basic Auth username |
 | `ROPDS_PASSWORD` | ❌ | — | HTTP Basic Auth password |
+| `REDIS_URL` | ❌ | `redis://127.0.0.1:6379` | Redis connection URL for state management |
 | `ALLOWED_USER_IDS` | ❌ | — | Comma-separated allowed Telegram user IDs; empty allows all users |
 | `ALLOW_ALL_USERS` | ❌ | auto | `false` requires `ALLOWED_USER_IDS`; empty/true keeps allow-all |
 | `MAX_BOOK_SIZE_MB` | ❌ | `50` | Maximum book size to send to Telegram |
@@ -233,6 +234,10 @@ All settings are loaded from environment variables or a `.env` file:
 | `MAX_CONCURRENT_DOWNLOADS` | ❌ | `2` | Parallel book downloads |
 | `REQUEST_COOLDOWN_SECS` | ❌ | `2` | Per-user command/callback cooldown |
 | `BOOKS_PER_PAGE` | ❌ | `5` | Books shown before the “show more” button |
+| `BOOKS_TIMEOUT_SECS` | ❌ | `180` | Timeout for books search/feed requests |
+| `FEED_TIMEOUT_SECS` | ❌ | `60` | Timeout for general OPDS feed requests |
+| `COVER_TIMEOUT_SECS` | ❌ | `15` | Timeout for cover image requests |
+| `DOWNLOAD_TIMEOUT_SECS` | ❌ | `120` | Timeout for book downloads |
 | `BOT_READY_FILE` | ❌ | — | Written after a successful Telegram `getMe` (used by Docker healthcheck) |
 | `RUST_LOG` | ❌ | `info` | Log level (`trace`, `debug`, `info`, `warn`, `error`) |
 

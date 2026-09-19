@@ -1,6 +1,7 @@
 mod config;
 mod handlers;
 mod ropds;
+mod state;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use teloxide::prelude::*;
 use crate::config::Config;
 use crate::handlers::{handle_callback, handle_command, BotState, Cmd, SharedState};
 use crate::ropds::{cleanup_downloads_dir, ClientLimits, RopdsClient};
+use crate::state::StateRepository;
 
 #[tokio::main]
 async fn main() {
@@ -44,14 +46,16 @@ async fn run() -> Result<()> {
             max_cover_size: cfg.max_cover_size,
             max_feed_size: cfg.max_feed_size,
         },
+        cfg.books_timeout,
+        cfg.feed_timeout,
+        cfg.cover_timeout,
+        cfg.download_timeout,
     )
     .context("Failed to build ROPDS client")?;
 
     let state: SharedState = Arc::new(BotState {
         ropds,
-        download_cache: DashMap::new(),
-        navigation_cache: DashMap::new(),
-        results_cache: DashMap::new(),
+        store: StateRepository::new(&cfg.redis_url).context("Failed to create Redis state repository")?,
         cover_cache: DashMap::new(),
         next_id: AtomicU64::new(1),
         allowed_user_ids: cfg.allowed_user_ids,

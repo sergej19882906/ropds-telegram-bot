@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-19
+
+### Added
+- State management via Redis for persistence across restarts and scalability
+- Individual TTL for cached results, navigation and downloads (30 minutes)
+- Search query validation (min length and alphanumeric check)
+- Detailed error messages for users (timeouts, connection issues, server errors)
+- Configurable timeouts for books, feeds, covers and downloads in `.env`
+- Updated Docker Compose with Redis service and healthchecks
+
+### Changed
+- Architecture shifted to stateless using Redis `StateRepository`
+- Updated documentation and `.env.example` to reflect new requirements
+
 ## [Unreleased]
 
 ## [0.1.7] - 2026-09-13

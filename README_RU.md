@@ -225,6 +225,7 @@ docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 | `ROPDS_URL` | ❌ | `http://localhost:8081` | URL сервера ROPDS |
 | `ROPDS_USER` | ❌ | — | Имя пользователя HTTP Basic Auth |
 | `ROPDS_PASSWORD` | ❌ | — | Пароль HTTP Basic Auth |
+| `REDIS_URL` | ❌ | `redis://127.0.0.1:6379` | URL подключения к Redis для управления состоянием |
 | `ALLOWED_USER_IDS` | ❌ | — | Разрешённые Telegram user ID через запятую; пустое значение разрешает всех |
 | `ALLOW_ALL_USERS` | ❌ | auto | `false` требует `ALLOWED_USER_IDS`; пустое/`true` оставляет доступ для всех |
 | `MAX_BOOK_SIZE_MB` | ❌ | `50` | Максимальный размер книги для отправки в Telegram |
@@ -233,6 +234,10 @@ docker run --rm --env-file .env ghcr.io/sergej19882906/ropds-telegram-bot:latest
 | `MAX_CONCURRENT_DOWNLOADS` | ❌ | `2` | Параллельные скачивания книг |
 | `REQUEST_COOLDOWN_SECS` | ❌ | `2` | Пауза между командами/кнопками одного пользователя |
 | `BOOKS_PER_PAGE` | ❌ | `5` | Сколько книг показать до кнопки «Показать ещё» |
+| `BOOKS_TIMEOUT_SECS` | ❌ | `180` | Таймаут для запросов поиска книг и фидов |
+| `FEED_TIMEOUT_SECS` | ❌ | `60` | Таймаут для общих запросов OPDS-фидов |
+| `COVER_TIMEOUT_H_SECS` | ❌ | `15` | Таймаут для запросов обложек |
+| `DOWNLOAD_TIMEOUT_SECS` | ❌ | `120` | Таймаут для скачивания книг |
 | `BOT_READY_FILE` | ❌ | — | Файл после успешного Telegram `getMe` (для Docker healthcheck) |
 | `RUST_LOG` | ❌ | `info` | Уровень логирования |
 

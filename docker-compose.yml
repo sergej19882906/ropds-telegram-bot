@@ -1,24 +1,40 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ropds-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   ropds-bot:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: ropds-telegram-bot
     restart: unless-stopped
-    
+    depends_on:
+      redis:
+        condition: service_healthy
+
     # Загружаем переменные из файла .env
     env_file:
       - .env
-      
+
     environment:
       - RUST_LOG=${RUST_LOG:-info}
-      
-    # Мы убрали раздел volumes, так как бот удаляет файлы после отправки.
-    # Это решает проблему с правами доступа (os error 13).
-    
+      - REDIS_URL=redis://redis:6379
+
     # Логирование, чтобы файлы логов не разрастались бесконечно
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  redis_data:

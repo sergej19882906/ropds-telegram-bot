@@ -48,6 +48,10 @@ pub struct RopdsClient {
     http: Client,
     base_url: Url,
     limits: ClientLimits,
+    books_timeout: Duration,
+    feed_timeout: Duration,
+    cover_timeout: Duration,
+    download_timeout: Duration,
 }
 
 impl RopdsClient {
@@ -56,6 +60,10 @@ impl RopdsClient {
         user: Option<String>,
         password: Option<String>,
         limits: ClientLimits,
+        books_timeout: Duration,
+        feed_timeout: Duration,
+        cover_timeout: Duration,
+        download_timeout: Duration,
     ) -> Result<Self> {
         let base_url = Url::parse(&base_url).context("Invalid ROPDS URL")?;
         if !matches!(base_url.scheme(), "http" | "https") || base_url.host().is_none() {
@@ -84,6 +92,10 @@ impl RopdsClient {
             http: builder.build()?,
             base_url,
             limits,
+            books_timeout,
+            feed_timeout,
+            cover_timeout,
+            download_timeout,
         })
     }
 
@@ -100,12 +112,12 @@ impl RopdsClient {
 
     pub async fn get_navigation(&self, href: &str) -> Result<Vec<NavItem>> {
         let url = self.base_url.join(href)?;
-        let feed = self.fetch_feed(url, OPDS_FEED_TIMEOUT).await?;
+        let feed = self.fetch_feed(url, self.feed_timeout).await?;
         Ok(feed.into_nav_items(&self.base_url))
     }
 
     async fn fetch_books(&self, url: Url) -> Result<Vec<Book>> {
-        let feed = self.fetch_feed(url, OPDS_BOOKS_TIMEOUT).await?;
+        let feed = self.fetch_feed(url, self.books_timeout).await?;
         Ok(feed.into_books(&self.base_url))
     }
 
@@ -180,7 +192,7 @@ impl RopdsClient {
         let url = Url::parse(&ctx.url).context("Invalid book URL")?;
         tracing::info!(url = %url, "Starting book download");
         let response = self
-            .send_following_redirects(url, OPDS_DOWNLOAD_TIMEOUT, "*/*")
+            .send_following_redirects(url, self.download_timeout, "*/*")
             .await
             .context("Failed to send request")?;
 
@@ -235,7 +247,7 @@ impl RopdsClient {
             return None;
         }
         let response = self
-            .send_following_redirects(url, OPDS_COVER_TIMEOUT, "image/*")
+            .send_following_redirects(url, self.cover_timeout, "image/*")
             .await
             .ok()?;
         if !response.status().is_success() {

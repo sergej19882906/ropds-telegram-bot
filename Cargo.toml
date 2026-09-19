@@ -17,6 +17,7 @@ anyhow = "1"
 dashmap = "6"
 urlencoding = "2"
 base64 = "0.22"
+redis = { version = "0.25", features = ["tokio-comp", "aio"] }
 
 [profile.release]
 opt-level = 3

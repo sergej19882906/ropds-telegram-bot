@@ -10,8 +10,10 @@ use teloxide::types::{
     MaybeInaccessibleMessage, ParseMode, ReplyParameters,
 };
 use teloxide::utils::command::BotCommands;
+use serde::{Serialize, Deserialize};
 
 use crate::ropds::{is_opds_href, Book, DownloadContext, NavItem, RopdsClient};
+use crate::state::StateRepository;
 
 const TELEGRAM_BUTTON_TEXT_LIMIT: usize = 64;
 const COVER_CACHE_TTL: Duration = Duration::from_secs(3600);
@@ -33,9 +35,7 @@ pub enum Cmd {
 
 pub struct BotState {
     pub ropds: RopdsClient,
-    pub download_cache: DashMap<u64, CachedDownload>,
-    pub navigation_cache: DashMap<u64, NavigationTarget>,
-    pub results_cache: DashMap<u64, CachedResults>,
+    pub store: StateRepository,
     pub cover_cache: DashMap<String, CachedCover>,
     pub next_id: AtomicU64,
     pub allowed_user_ids: HashSet<u64>,
@@ -48,29 +48,46 @@ pub struct BotState {
 
 pub type SharedState = Arc<BotState>;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CachedDownload {
     pub owner_id: u64,
     pub context: DownloadContext,
+    pub created: Instant,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NavigationTarget {
     pub owner_id: u64,
     pub target: String,
+    pub created: Instant,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CachedResults {
     pub owner_id: u64,
     pub books: Vec<Book>,
     pub offset: usize,
+    pub created: Instant,
 }
 
 #[derive(Clone)]
 pub struct CachedCover {
     pub created: Instant,
     pub bytes: Vec<u8>,
+}
+
+const CACHE_TTL: Duration = Duration::from_secs(1800); // 30 минут
+
+fn is_valid_search_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    if trimmed.len() < 2 {
+        return false;
+    }
+    // Запрещаем запросы, состоящие только из спецсимволов или цифр
+    if trimmed.chars().all(|c| !c.is_alphanumeric()) {
+        return false;
+    }
+    true
 }
 
 fn message_user_id(msg: &Message) -> Option<u64> {
@@ -130,18 +147,19 @@ fn searching_message(query: &str) -> String {
     format!("🔍 Ищу: *{}*\\.\\.\\.", escape_md(query))
 }
 
-fn cache_nav_rows(
+async fn cache_nav_rows(
     state: &SharedState,
     owner_id: u64,
     items: impl IntoIterator<Item = NavItem>,
 ) -> Vec<Vec<InlineKeyboardButton>> {
-    items
-        .into_iter()
-        .map(|item| vec![nav_or_download_button(state, owner_id, item)])
-        .collect()
+    let mut rows = Vec::new();
+    for item in items {
+        rows.push(vec![nav_or_download_button(state, owner_id, item).await]);
+    }
+    rows
 }
 
-fn nav_or_download_button(
+async fn nav_or_download_button(
     state: &SharedState,
     owner_id: u64,
     item: NavItem,
@@ -149,22 +167,18 @@ fn nav_or_download_button(
     let label = truncate_button_label(&item.title);
     if let Some(context) = item.download {
         let id = state.next_id.fetch_add(1, Ordering::SeqCst);
-        state
-            .download_cache
-            .insert(id, CachedDownload { owner_id, context });
+        let _ = state.store.save_download(id, &CachedDownload { owner_id, context, created: Instant::now() }).await;
         return InlineKeyboardButton::callback(label, format!("dl:{id}"));
     }
 
     let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
-    state.navigation_cache.insert(
-        navigation_id,
-        NavigationTarget {
-            owner_id,
-            target: item
-                .href
-                .unwrap_or_else(|| format!("search:{}", item.title)),
-        },
-    );
+    let _ = state.store.save_nav(navigation_id, &NavigationTarget {
+        owner_id,
+        target: item
+            .href
+            .unwrap_or_else(|| format!("search:{}", item.title)),
+        created: Instant::now(),
+    }).await;
     InlineKeyboardButton::callback(label, format!("nav:{navigation_id}"))
 }
 
@@ -232,8 +246,8 @@ pub async fn handle_command(
                 .await?;
         }
         Cmd::Search(query) => {
-            if query.trim().is_empty() {
-                bot.send_message(msg.chat.id, "⚠️ Укажите запрос\\. Пример: `/search Дюна`")
+            if !is_valid_search_query(&query) {
+                bot.send_message(msg.chat.id, "⚠️ Запрос слишком короткий или содержит недопустимые символы\\.\nПример: `/search Дюна` ")
                     .parse_mode(ParseMode::MarkdownV2)
                     .await?;
                 return Ok(());
@@ -266,7 +280,7 @@ pub async fn handle_command(
                         .await?;
                 }
                 Ok(items) => {
-                    let markup = InlineKeyboardMarkup::new(cache_nav_rows(&state, user_id, items));
+                    let markup = InlineKeyboardMarkup::new(cache_nav_rows(&state, user_id, items).await);
                     let title = if matches!(cmd, Cmd::Authors) {
                         "Авторы"
                     } else {
@@ -311,7 +325,22 @@ async fn send_book_results(
         }
         Err(e) => {
             tracing::error!(error = ?e, "Request failed");
-            bot.send_message(chat_id, "❌ Ошибка при обращении к ROPDS\\.")
+            let user_msg = if let Some(status) = e.downcast_ref::<reqwest::Error>() {
+                if status.is_timeout() {
+                    "⏳ Сервер библиотеки не ответил вовремя\\. Попробуйте позже\\."
+                } else if status.is_connect() {
+                    "🌐 Не удалось установить соединение с библиотекой\\."
+                } else {
+                    "❌ Произошла сетевая ошибка при обращении к ROPDS\\."
+                }
+            } else if e.to_string().contains("ROPDS returned status 404") {
+                "😔 Запрашиваемый раздел не найден на сервере\\."
+            } else if e.to_string().contains("ROPDS returned status 5") {
+                "🛠 Сервер библиотеки временно недоступен или перегружен\\."
+            } else {
+                "❌ Ошибка при обращении к ROPDS\\."
+            };
+            bot.send_message(chat_id, user_msg)
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }
@@ -339,14 +368,12 @@ async fn send_book_page(
     if next_offset < total {
         let remaining = total - next_offset;
         let id = state.next_id.fetch_add(1, Ordering::SeqCst);
-        state.results_cache.insert(
-            id,
-            CachedResults {
-                owner_id,
-                books,
-                offset: next_offset,
-            },
-        );
+        let _ = state.store.save_results(id, &CachedResults {
+            owner_id,
+            books,
+            offset: next_offset,
+            created: Instant::now(),
+        }).await;
         bot.send_message(
             chat_id,
             format!("Показано {next_offset} из {total}. Нажмите, чтобы увидеть ещё."),
@@ -370,18 +397,16 @@ async fn send_book_card(
     book: &Book,
 ) -> ResponseResult<()> {
     let id = state.next_id.fetch_add(1, Ordering::SeqCst);
-    state.download_cache.insert(
-        id,
-        CachedDownload {
-            owner_id,
-            context: DownloadContext {
-                url: book.url.clone(),
-                title: book.title.clone(),
-                author: book.author.clone(),
-                cover_url: book.cover_url.clone(),
-            },
+    let _ = state.store.save_download(id, &CachedDownload {
+        owner_id,
+        context: DownloadContext {
+            url: book.url.clone(),
+            title: book.title.clone(),
+            author: book.author.clone(),
+            cover_url: book.cover_url.clone(),
         },
-    );
+        created: Instant::now(),
+    }).await;
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
         "📥 Скачать",
@@ -460,13 +485,19 @@ pub async fn handle_callback(
         let Ok(id) = id_str.parse::<u64>() else {
             return Ok(());
         };
-        let Some(page) = state.results_cache.get(&id).map(|value| value.clone()) else {
-            return Ok(());
+        
+        let page = match state.store.get_results(id).await {
+            Ok(Some(p)) if p.created.elapsed() < CACHE_TTL => p,
+            _ => {
+                let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
+                return Ok(());
+            }
         };
+
         if page.owner_id != requester_id {
             return Ok(());
         }
-        state.results_cache.remove(&id);
+        let _ = state.store.remove(&format!("res:{}", id)).await;
         if let Some(msg) = &q.message {
             let chat_id = msg.chat().id;
             let _ =
@@ -481,13 +512,19 @@ pub async fn handle_callback(
         let Ok(id) = id_str.parse::<u64>() else {
             return Ok(());
         };
-        let Some(target) = state.navigation_cache.get(&id).map(|value| value.clone()) else {
-            return Ok(());
+        
+        let target = match state.store.get_nav(id).await {
+            Ok(Some(t)) if t.created.elapsed() < CACHE_TTL => t,
+            _ => {
+                let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
+                return Ok(());
+            }
         };
+
         if target.owner_id != requester_id {
             return Ok(());
         }
-        state.navigation_cache.remove(&id);
+        let _ = state.store.remove(&format!("nav:{}", id)).await;
         if let Some(msg) = q.message {
             let chat_id = msg.chat().id;
             let msg_id = msg.id();
@@ -495,7 +532,7 @@ pub async fn handle_callback(
             if is_opds_href(&target.target) {
                 match state.ropds.get_navigation(&target.target).await {
                     Ok(items) if !items.is_empty() => {
-                        let rows = cache_nav_rows(&state, requester_id, items);
+                        let rows = cache_nav_rows(&state, requester_id, items).await;
                         bot.edit_message_text(chat_id, msg_id, "📂 Выберите вариант:")
                             .reply_markup(InlineKeyboardMarkup::new(rows))
                             .await?;
@@ -537,12 +574,15 @@ pub async fn handle_callback(
         return Ok(());
     };
 
-    let Some(entry) = state.download_cache.get(&id).map(|v| v.clone()) else {
-        let _ = bot
-            .answer_callback_query(&q.id)
-            .text("⌛ Ссылка устарела.")
-            .await;
-        return Ok(());
+    let entry = match state.store.get_download(id).await {
+        Ok(Some(e)) if e.created.elapsed() < CACHE_TTL => e,
+        _ => {
+            let _ = bot
+                .answer_callback_query(&q.id)
+                .text("⌛ Ссылка устарела или не найдена.")
+                .await;
+            return Ok(());
+        }
     };
     if entry.owner_id != requester_id {
         let _ = bot
@@ -551,7 +591,7 @@ pub async fn handle_callback(
             .await;
         return Ok(());
     }
-    state.download_cache.remove(&id);
+    let _ = state.store.remove(&format!("dl:{}", id)).await;
     let ctx = entry.context;
 
     let _ = bot.answer_callback_query(&q.id).await;

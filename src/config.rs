@@ -10,6 +10,10 @@ const DEFAULT_MAX_FEED_MB: u64 = 10;
 const DEFAULT_CONCURRENT_DOWNLOADS: usize = 2;
 const DEFAULT_COOLDOWN_SECS: u64 = 2;
 const DEFAULT_BOOKS_PER_PAGE: usize = 5;
+const DEFAULT_BOOKS_TIMEOUT_SECS: u64 = 180;
+const DEFAULT_FEED_TIMEOUT_SECS: u64 = 60;
+const DEFAULT_COVER_TIMEOUT_SECS: u64 = 15;
+const DEFAULT_DOWNLOAD_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Clone)]
 pub struct Config {
@@ -25,6 +29,11 @@ pub struct Config {
     pub max_concurrent_downloads: usize,
     pub request_cooldown: Duration,
     pub books_per_page: usize,
+    pub books_timeout: Duration,
+    pub feed_timeout: Duration,
+    pub cover_timeout: Duration,
+    pub download_timeout: Duration,
+    pub redis_url: String,
     pub ready_file: Option<PathBuf>,
 }
 
@@ -45,6 +54,11 @@ impl fmt::Debug for Config {
             .field("max_concurrent_downloads", &self.max_concurrent_downloads)
             .field("request_cooldown", &self.request_cooldown)
             .field("books_per_page", &self.books_per_page)
+            .field("books_timeout", &self.books_timeout)
+            .field("feed_timeout", &self.feed_timeout)
+            .field("cover_timeout", &self.cover_timeout)
+            .field("download_timeout", &self.download_timeout)
+            .field("redis_url", &self.redis_url)
             .field("ready_file", &self.ready_file)
             .finish_non_exhaustive()
     }
@@ -75,6 +89,12 @@ impl Config {
         let request_cooldown =
             Duration::from_secs(env_u64("REQUEST_COOLDOWN_SECS", DEFAULT_COOLDOWN_SECS)?);
         let books_per_page = env_usize("BOOKS_PER_PAGE", DEFAULT_BOOKS_PER_PAGE)?.max(1);
+        let books_timeout = Duration::from_secs(env_u64("BOOKS_TIMEOUT_SECS", DEFAULT_BOOKS_TIMEOUT_SECS)?);
+        let feed_timeout = Duration::from_secs(env_u64("FEED_TIMEOUT_SECS", DEFAULT_FEED_TIMEOUT_SECS)?);
+        let cover_timeout = Duration::from_secs(env_u64("COVER_TIMEOUT_SECS", DEFAULT_COVER_TIMEOUT_SECS)?);
+        let download_timeout = Duration::from_secs(env_u64("DOWNLOAD_TIMEOUT_SECS", DEFAULT_DOWNLOAD_TIMEOUT_SECS)?);
+        let redis_url = env::var("REDIS_URL")
+            .unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
         let ready_file = env::var("BOT_READY_FILE")
             .ok()
             .filter(|s| !s.is_empty())
@@ -105,6 +125,11 @@ impl Config {
             max_concurrent_downloads,
             request_cooldown,
             books_per_page,
+            books_timeout,
+            feed_timeout,
+            cover_timeout,
+            download_timeout,
+            redis_url,
             ready_file,
         })
     }
