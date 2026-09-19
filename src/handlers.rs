@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton, KeyboardMarkup,
     MaybeInaccessibleMessage, ParseMode, ReplyParameters,
 };
 use teloxide::utils::command::BotCommands;
-use serde::{Serialize, Deserialize};
 
 use crate::ropds::{is_opds_href, Book, DownloadContext, NavItem, RopdsClient};
 use crate::state::StateRepository;
@@ -288,7 +288,8 @@ pub async fn handle_command(
                         .await?;
                 }
                 Ok(items) => {
-                    let markup = InlineKeyboardMarkup::new(cache_nav_rows(&state, user_id, items).await);
+                    let markup =
+                        InlineKeyboardMarkup::new(cache_nav_rows(&state, user_id, items).await);
                     let title = if matches!(cmd, Cmd::Authors) {
                         "Авторы"
                     } else {
@@ -380,12 +381,18 @@ async fn send_book_page(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let _ = state.store.save_results(id, &CachedResults {
-            owner_id,
-            books,
-            offset: next_offset,
-            created: now,
-        }).await;
+        let _ = state
+            .store
+            .save_results(
+                id,
+                &CachedResults {
+                    owner_id,
+                    books,
+                    offset: next_offset,
+                    created: now,
+                },
+            )
+            .await;
         bot.send_message(
             chat_id,
             format!("Показано {next_offset} из {total}. Нажмите, чтобы увидеть ещё."),
@@ -413,16 +420,22 @@ async fn send_book_card(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let _ = state.store.save_download(id, &CachedDownload {
-        owner_id,
-        context: DownloadContext {
-            url: book.url.clone(),
-            title: book.title.clone(),
-            author: book.author.clone(),
-            cover_url: book.cover_url.clone(),
-        },
-        created: now,
-    }).await;
+    let _ = state
+        .store
+        .save_download(
+            id,
+            &CachedDownload {
+                owner_id,
+                context: DownloadContext {
+                    url: book.url.clone(),
+                    title: book.title.clone(),
+                    author: book.author.clone(),
+                    cover_url: book.cover_url.clone(),
+                },
+                created: now,
+            },
+        )
+        .await;
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
         "📥 Скачать",
@@ -503,9 +516,21 @@ pub async fn handle_callback(
         };
         
         let page = match state.store.get_results(id).await {
-            Ok(Some(p)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - p.created) < CACHE_TTL.as_secs() => p,
+            Ok(Some(p))
+                if (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    - p.created)
+                    < CACHE_TTL.as_secs() =>
+            {
+                p
+            }
             _ => {
-                let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
+                let _ = bot
+                    .answer_callback_query(&q.id)
+                    .text("⌛ Ссылка устарела или не найдена.")
+                    .await;
                 return Ok(());
             }
         };
@@ -530,9 +555,21 @@ pub async fn handle_callback(
         };
         
         let target = match state.store.get_nav(id).await {
-            Ok(Some(t)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - t.created) < CACHE_TTL.as_secs() => t,
+            Ok(Some(t))
+                if (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    - t.created)
+                    < CACHE_TTL.as_secs() =>
+            {
+                t
+            }
             _ => {
-                let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
+                let _ = bot
+                    .answer_callback_query(&q.id)
+                    .text("⌛ Ссылка устарела или не найдена.")
+                    .await;
                 return Ok(());
             }
         };
@@ -591,7 +628,16 @@ pub async fn handle_callback(
     };
 
     let entry = match state.store.get_download(id).await {
-        Ok(Some(e)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - e.created) < CACHE_TTL.as_secs() => e,
+        Ok(Some(e))
+            if (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                - e.created)
+                < CACHE_TTL.as_secs() =>
+        {
+            e
+        }
         _ => {
             let _ = bot
                 .answer_callback_query(&q.id)

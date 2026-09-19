@@ -15,7 +15,10 @@ impl StateRepository {
     }
 
     async fn get_conn(&self) -> Result<redis::aio::Connection> {
-        self.client.get_async_connection().await.context("Failed to get Redis connection")
+        self.client
+            .get_async_connection()
+            .await
+            .context("Failed to get Redis connection")
     }
 
     pub async fn save<T: Serialize>(&self, key: &str, value: &T, ttl: Duration) -> Result<()> {
@@ -29,7 +32,9 @@ impl StateRepository {
         let mut conn = self.get_conn().await?;
         let val: Option<String> = conn.get(key).await?;
         match val {
-            Some(s) => Ok(Some(serde_json::from_str(&s).context("Failed to deserialize value")?)),
+            Some(s) => Ok(Some(
+                serde_json::from_str(&s).context("Failed to deserialize value")?,
+            )),
             None => Ok(None),
         }
     }

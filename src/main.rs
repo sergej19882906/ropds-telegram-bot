@@ -55,7 +55,8 @@ async fn run() -> Result<()> {
 
     let state: SharedState = Arc::new(BotState {
         ropds,
-        store: StateRepository::new(&cfg.redis_url).context("Failed to create Redis state repository")?,
+        store: StateRepository::new(&cfg.redis_url)
+            .context("Failed to create Redis state repository")?,
         cover_cache: DashMap::new(),
         next_id: AtomicU64::new(1),
         allowed_user_ids: cfg.allowed_user_ids,
@@ -86,7 +87,9 @@ async fn run() -> Result<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(600)).await;
-            cleanup_state.cover_cache.retain(|_, cached| cached.created.elapsed() < Duration::from_secs(3600));
+            cleanup_state
+                .cover_cache
+                .retain(|_, cached| cached.created.elapsed() < Duration::from_secs(3600));
             cleanup_state
                 .last_activity
                 .retain(|_, instant| instant.elapsed() < Duration::from_secs(3600));

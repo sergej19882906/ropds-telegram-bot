@@ -89,12 +89,17 @@ impl Config {
         let request_cooldown =
             Duration::from_secs(env_u64("REQUEST_COOLDOWN_SECS", DEFAULT_COOLDOWN_SECS)?);
         let books_per_page = env_usize("BOOKS_PER_PAGE", DEFAULT_BOOKS_PER_PAGE)?.max(1);
-        let books_timeout = Duration::from_secs(env_u64("BOOKS_TIMEOUT_SECS", DEFAULT_BOOKS_TIMEOUT_SECS)?);
-        let feed_timeout = Duration::from_secs(env_u64("FEED_TIMEOUT_SECS", DEFAULT_FEED_TIMEOUT_SECS)?);
-        let cover_timeout = Duration::from_secs(env_u64("COVER_TIMEOUT_SECS", DEFAULT_COVER_TIMEOUT_SECS)?);
-        let download_timeout = Duration::from_secs(env_u64("DOWNLOAD_TIMEOUT_SECS", DEFAULT_DOWNLOAD_TIMEOUT_SECS)?);
-        let redis_url = env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
+        let books_timeout =
+            Duration::from_secs(env_u64("BOOKS_TIMEOUT_SECS", DEFAULT_BOOKS_TIMEOUT_SECS)?);
+        let feed_timeout =
+            Duration::from_secs(env_u64("FEED_TIMEOUT_SECS", DEFAULT_FEED_TIMEOUT_SECS)?);
+        let cover_timeout =
+            Duration::from_secs(env_u64("COVER_TIMEOUT_SECS", DEFAULT_COVER_TIMEOUT_SECS)?);
+        let download_timeout = Duration::from_secs(env_u64(
+            "DOWNLOAD_TIMEOUT_SECS",
+            DEFAULT_DOWNLOAD_TIMEOUT_SECS,
+        )?);
+        let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
         let ready_file = env::var("BOT_READY_FILE")
             .ok()
             .filter(|s| !s.is_empty())
