@@ -6,10 +6,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
 
-const OPDS_BOOKS_TIMEOUT: Duration = Duration::from_secs(180);
-const OPDS_FEED_TIMEOUT: Duration = Duration::from_secs(60);
-const OPDS_COVER_TIMEOUT: Duration = Duration::from_secs(15);
-const OPDS_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_FEED_REDIRECTS: u32 = 5;
 const MAX_FILENAME_STEM: usize = 100;
 const LOG_BODY_LIMIT: usize = 512;
@@ -44,6 +40,18 @@ pub struct NavItem {
     pub download: Option<DownloadContext>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RopdsConfig {
+    pub base_url: String,
+    pub user: Option<String>,
+    pub password: Option<String>,
+    pub limits: ClientLimits,
+    pub books_timeout: Duration,
+    pub feed_timeout: Duration,
+    pub cover_timeout: Duration,
+    pub download_timeout: Duration,
+}
+
 pub struct RopdsClient {
     http: Client,
     base_url: Url,
@@ -55,17 +63,8 @@ pub struct RopdsClient {
 }
 
 impl RopdsClient {
-    pub fn new(
-        base_url: String,
-        user: Option<String>,
-        password: Option<String>,
-        limits: ClientLimits,
-        books_timeout: Duration,
-        feed_timeout: Duration,
-        cover_timeout: Duration,
-        download_timeout: Duration,
-    ) -> Result<Self> {
-        let base_url = Url::parse(&base_url).context("Invalid ROPDS URL")?;
+    pub fn new(cfg: RopdsConfig) -> Result<Self> {
+        let base_url = Url::parse(&cfg.base_url).context("Invalid ROPDS URL")?;
         if !matches!(base_url.scheme(), "http" | "https") || base_url.host().is_none() {
             anyhow::bail!("ROPDS URL must use http or https and include a host");
         }
@@ -75,7 +74,7 @@ impl RopdsClient {
             .redirect(reqwest::redirect::Policy::none())
             .user_agent("ropds-telegram-bot/0.1");
 
-        if let (Some(u), Some(p)) = (user, password) {
+        if let (Some(u), Some(p)) = (cfg.user, cfg.password) {
             let creds = format!("{u}:{p}");
             let encoded = base64::Engine::encode(
                 &base64::engine::general_purpose::STANDARD,
@@ -91,11 +90,11 @@ impl RopdsClient {
         Ok(Self {
             http: builder.build()?,
             base_url,
-            limits,
-            books_timeout,
-            feed_timeout,
-            cover_timeout,
-            download_timeout,
+            limits: cfg.limits,
+            books_timeout: cfg.books_timeout,
+            feed_timeout: cfg.feed_timeout,
+            cover_timeout: cfg.cover_timeout,
+            download_timeout: cfg.download_timeout,
         })
     }
 

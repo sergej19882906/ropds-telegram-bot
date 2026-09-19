@@ -14,9 +14,9 @@ impl StateRepository {
         Ok(Self { client })
     }
 
-    async fn get_conn(&self) -> Result<redis::aio::Connection> {
+    async fn get_conn(&self) -> Result<redis::aio::MultiplexedConnection> {
         self.client
-            .get_async_connection()
+            .get_multiplexed_async_connection()
             .await
             .context("Failed to get Redis connection")
     }

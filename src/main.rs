@@ -37,20 +37,20 @@ async fn run() -> Result<()> {
 
     cleanup_downloads_dir();
 
-    let ropds = RopdsClient::new(
-        cfg.ropds_url,
-        cfg.ropds_user,
-        cfg.ropds_password,
-        ClientLimits {
+    let ropds = RopdsClient::new(crate::ropds::RopdsConfig {
+        base_url: cfg.ropds_url,
+        user: cfg.ropds_user,
+        password: cfg.ropds_password,
+        limits: ClientLimits {
             max_book_size: cfg.max_book_size,
             max_cover_size: cfg.max_cover_size,
             max_feed_size: cfg.max_feed_size,
         },
-        cfg.books_timeout,
-        cfg.feed_timeout,
-        cfg.cover_timeout,
-        cfg.download_timeout,
-    )
+        books_timeout: cfg.books_timeout,
+        feed_timeout: cfg.feed_timeout,
+        cover_timeout: cfg.cover_timeout,
+        download_timeout: cfg.download_timeout,
+    })
     .context("Failed to build ROPDS client")?;
 
     let state: SharedState = Arc::new(BotState {
