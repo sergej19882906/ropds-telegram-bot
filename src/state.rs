@@ -1,8 +1,8 @@
+use crate::handlers::{CachedDownload, CachedResults, NavigationTarget};
 use anyhow::{Context, Result};
 use redis::{AsyncCommands, Client};
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
-use crate::handlers::{CachedDownload, CachedResults, NavigationTarget};
 
 pub struct StateRepository {
     client: Client,

@@ -171,7 +171,17 @@ async fn nav_or_download_button(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let _ = state.store.save_download(id, &CachedDownload { owner_id, context, created: now }).await;
+        let _ = state
+            .store
+            .save_download(
+                id,
+                &CachedDownload {
+                    owner_id,
+                    context,
+                    created: now,
+                },
+            )
+            .await;
         return InlineKeyboardButton::callback(label, format!("dl:{id}"));
     }
 
@@ -180,13 +190,19 @@ async fn nav_or_download_button(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let _ = state.store.save_nav(navigation_id, &NavigationTarget {
-        owner_id,
-        target: item
-            .href
-            .unwrap_or_else(|| format!("search:{}", item.title)),
-        created: now,
-    }).await;
+    let _ = state
+        .store
+        .save_nav(
+            navigation_id,
+            &NavigationTarget {
+                owner_id,
+                target: item
+                    .href
+                    .unwrap_or_else(|| format!("search:{}", item.title)),
+                created: now,
+            },
+        )
+        .await;
     InlineKeyboardButton::callback(label, format!("nav:{navigation_id}"))
 }
 
@@ -514,7 +530,7 @@ pub async fn handle_callback(
         let Ok(id) = id_str.parse::<u64>() else {
             return Ok(());
         };
-        
+
         let page = match state.store.get_results(id).await {
             Ok(Some(p))
                 if (std::time::SystemTime::now()
@@ -553,7 +569,7 @@ pub async fn handle_callback(
         let Ok(id) = id_str.parse::<u64>() else {
             return Ok(());
         };
-        
+
         let target = match state.store.get_nav(id).await {
             Ok(Some(t))
                 if (std::time::SystemTime::now()
