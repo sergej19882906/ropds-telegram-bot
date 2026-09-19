@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use redis::{AsyncCommands, Client};
 use serde::{de::DeserializeOwned, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use crate::handlers::{CachedDownload, CachedResults, NavigationTarget};
 
 pub struct StateRepository {
@@ -21,7 +21,7 @@ impl StateRepository {
     pub async fn save<T: Serialize>(&self, key: &str, value: &T, ttl: Duration) -> Result<()> {
         let mut conn = self.get_conn().await?;
         let serialized = serde_json::to_string(value).context("Failed to serialize value")?;
-        let _: () = conn.set_ex(key, serialized, ttl.as_secs() as usize).await?;
+        let _: () = conn.set_ex(key, serialized, ttl.as_secs()).await?;
         Ok(())
     }
 

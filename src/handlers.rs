@@ -52,14 +52,14 @@ pub type SharedState = Arc<BotState>;
 pub struct CachedDownload {
     pub owner_id: u64,
     pub context: DownloadContext,
-    pub created: Instant,
+    pub created: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NavigationTarget {
     pub owner_id: u64,
     pub target: String,
-    pub created: Instant,
+    pub created: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -67,7 +67,7 @@ pub struct CachedResults {
     pub owner_id: u64,
     pub books: Vec<Book>,
     pub offset: usize,
-    pub created: Instant,
+    pub created: u64,
 }
 
 #[derive(Clone)]
@@ -167,17 +167,25 @@ async fn nav_or_download_button(
     let label = truncate_button_label(&item.title);
     if let Some(context) = item.download {
         let id = state.next_id.fetch_add(1, Ordering::SeqCst);
-        let _ = state.store.save_download(id, &CachedDownload { owner_id, context, created: Instant::now() }).await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let _ = state.store.save_download(id, &CachedDownload { owner_id, context, created: now }).await;
         return InlineKeyboardButton::callback(label, format!("dl:{id}"));
     }
 
     let navigation_id = state.next_id.fetch_add(1, Ordering::SeqCst);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let _ = state.store.save_nav(navigation_id, &NavigationTarget {
         owner_id,
         target: item
             .href
             .unwrap_or_else(|| format!("search:{}", item.title)),
-        created: Instant::now(),
+        created: now,
     }).await;
     InlineKeyboardButton::callback(label, format!("nav:{navigation_id}"))
 }
@@ -368,11 +376,15 @@ async fn send_book_page(
     if next_offset < total {
         let remaining = total - next_offset;
         let id = state.next_id.fetch_add(1, Ordering::SeqCst);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let _ = state.store.save_results(id, &CachedResults {
             owner_id,
             books,
             offset: next_offset,
-            created: Instant::now(),
+            created: now,
         }).await;
         bot.send_message(
             chat_id,
@@ -397,6 +409,10 @@ async fn send_book_card(
     book: &Book,
 ) -> ResponseResult<()> {
     let id = state.next_id.fetch_add(1, Ordering::SeqCst);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let _ = state.store.save_download(id, &CachedDownload {
         owner_id,
         context: DownloadContext {
@@ -405,7 +421,7 @@ async fn send_book_card(
             author: book.author.clone(),
             cover_url: book.cover_url.clone(),
         },
-        created: Instant::now(),
+        created: now,
     }).await;
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
@@ -487,7 +503,7 @@ pub async fn handle_callback(
         };
         
         let page = match state.store.get_results(id).await {
-            Ok(Some(p)) if p.created.elapsed() < CACHE_TTL => p,
+            Ok(Some(p)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - p.created) < CACHE_TTL.as_secs() => p,
             _ => {
                 let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
                 return Ok(());
@@ -514,7 +530,7 @@ pub async fn handle_callback(
         };
         
         let target = match state.store.get_nav(id).await {
-            Ok(Some(t)) if t.created.elapsed() < CACHE_TTL => t,
+            Ok(Some(t)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - t.created) < CACHE_TTL.as_secs() => t,
             _ => {
                 let _ = bot.answer_callback_query(&q.id).text("⌛ Ссылка устарела или не найдена.").await;
                 return Ok(());
@@ -575,7 +591,7 @@ pub async fn handle_callback(
     };
 
     let entry = match state.store.get_download(id).await {
-        Ok(Some(e)) if e.created.elapsed() < CACHE_TTL => e,
+        Ok(Some(e)) if (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() - e.created) < CACHE_TTL.as_secs() => e,
         _ => {
             let _ = bot
                 .answer_callback_query(&q.id)

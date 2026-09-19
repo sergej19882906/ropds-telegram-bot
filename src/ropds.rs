@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, Response, Url};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,7 +21,7 @@ pub struct ClientLimits {
     pub max_feed_size: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Book {
     pub title: String,
     pub author: String,
@@ -29,7 +29,7 @@ pub struct Book {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadContext {
     pub url: String,
     pub title: String,

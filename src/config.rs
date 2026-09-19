@@ -232,6 +232,11 @@ mod tests {
             max_concurrent_downloads: 1,
             request_cooldown: Duration::from_secs(2),
             books_per_page: 5,
+            books_timeout: Duration::from_secs(180),
+            feed_timeout: Duration::from_secs(60),
+            cover_timeout: Duration::from_secs(15),
+            download_timeout: Duration::from_secs(120),
+            redis_url: "redis://127.0.0.1:6379".into(),
             ready_file: None,
         };
         let debug = format!("{cfg:?}");

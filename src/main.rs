@@ -86,12 +86,7 @@ async fn run() -> Result<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(600)).await;
-            cleanup_state.download_cache.clear();
-            cleanup_state.navigation_cache.clear();
-            cleanup_state.results_cache.clear();
-            cleanup_state
-                .cover_cache
-                .retain(|_, cached| cached.created.elapsed() < Duration::from_secs(3600));
+            cleanup_state.cover_cache.retain(|_, cached| cached.created.elapsed() < Duration::from_secs(3600));
             cleanup_state
                 .last_activity
                 .retain(|_, instant| instant.elapsed() < Duration::from_secs(3600));
