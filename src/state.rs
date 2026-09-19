@@ -16,7 +16,8 @@ impl StateRepository {
 
     async fn get_conn(&self) -> Result<redis::aio::MultiplexedConnection> {
         tracing::debug!("Attempting to get Redis connection...");
-        let conn = self.client
+        let conn = self
+            .client
             .get_multiplexed_async_connection()
             .await
             .context("Failed to get Redis connection")?;
@@ -34,14 +35,11 @@ impl StateRepository {
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let mut conn = self.get_conn().await?;
         tracing::debug!(key = %key, "Fetching value from Redis");
-        let val: Option<String> = tokio::time::timeout(
-            Duration::from_secs(5),
-            conn.get(key),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("Redis request timed out"))?
-        .context("Failed to get value from Redis")?;
-        
+        let val: Option<String> = tokio::time::timeout(Duration::from_secs(5), conn.get(key))
+            .await
+            .map_err(|_| anyhow::anyhow!("Redis request timed out"))?
+            .context("Failed to get value from Redis")?;
+
         match val {
             Some(s) => Ok(Some(
                 serde_json::from_str(&s).context("Failed to deserialize value")?,

@@ -646,7 +646,10 @@ pub async fn handle_callback(
         return Ok(());
     };
 
-    tracing::info!(download_id = id, "Attempting to retrieve download entry from store");
+    tracing::info!(
+        download_id = id,
+        "Attempting to retrieve download entry from store"
+    );
     let entry = match state.store.get_download(id).await {
         Ok(Some(e))
             if (std::time::SystemTime::now()
@@ -688,7 +691,7 @@ pub async fn handle_callback(
             Ok(permit) => {
                 tracing::info!("Download permit acquired");
                 permit
-            },
+            }
             Err(error) => {
                 tracing::error!(%error, "Download semaphore is closed");
                 let _ = edit_callback_message(&bot, &msg, "❌ Загрузка временно недоступна.", None)
