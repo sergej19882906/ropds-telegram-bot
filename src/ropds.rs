@@ -241,6 +241,7 @@ impl RopdsClient {
 
     pub async fn download_cover(&self, url: &str) -> Option<Vec<u8>> {
         let url = Url::parse(url).ok()?;
+        tracing::info!(url = %url, "Starting cover download");
         if ensure_allowed_url(&url, &self.base_url).is_err() {
             tracing::warn!(url = %url, "Rejected cover URL outside ROPDS origin");
             return None;

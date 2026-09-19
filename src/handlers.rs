@@ -253,6 +253,7 @@ pub async fn handle_command(
         return Ok(());
     }
     if !allow_request(&state, user_id) {
+        tracing::warn!(user_id = user_id, "Request rejected by cooldown");
         bot.send_message(msg.chat.id, "Слишком много запросов. Попробуйте позже.")
             .await?;
         return Ok(());
@@ -505,6 +506,8 @@ pub async fn handle_callback(
     state: SharedState,
 ) -> ResponseResult<()> {
     let requester_id = callback_user_id(&q);
+    tracing::info!(requester_id, callback_data = ?q.data, "Handling callback");
+
     if !is_allowed(&state, requester_id) {
         tracing::warn!(user_id = requester_id, "Rejected unauthorized callback");
         let _ = bot
@@ -643,6 +646,7 @@ pub async fn handle_callback(
         return Ok(());
     };
 
+    tracing::info!(download_id = id, "Attempting to retrieve download entry from store");
     let entry = match state.store.get_download(id).await {
         Ok(Some(e))
             if (std::time::SystemTime::now()
@@ -679,8 +683,12 @@ pub async fn handle_callback(
         let msg_id = msg.id();
         let _ = edit_callback_message(&bot, &msg, "⏳ Загружаю книгу...", None).await;
 
+        tracing::info!("Attempting to acquire download permit");
         let _permit = match state.downloads.acquire().await {
-            Ok(permit) => permit,
+            Ok(permit) => {
+                tracing::info!("Download permit acquired");
+                permit
+            },
             Err(error) => {
                 tracing::error!(%error, "Download semaphore is closed");
                 let _ = edit_callback_message(&bot, &msg, "❌ Загрузка временно недоступна.", None)
