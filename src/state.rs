@@ -42,7 +42,8 @@ impl StateRepository {
 
     // Helpers for specific types to keep handlers.rs clean
     pub async fn save_download(&self, id: u64, value: &CachedDownload) -> Result<()> {
-        self.save(&format!("dl:{}", id), value, Duration::from_secs(1800)).await
+        self.save(&format!("dl:{}", id), value, Duration::from_secs(1800))
+            .await
     }
 
     pub async fn get_download(&self, id: u64) -> Result<Option<CachedDownload>> {
@@ -50,7 +51,8 @@ impl StateRepository {
     }
 
     pub async fn save_nav(&self, id: u64, value: &NavigationTarget) -> Result<()> {
-        self.save(&format!("nav:{}", id), value, Duration::from_secs(1800)).await
+        self.save(&format!("nav:{}", id), value, Duration::from_secs(1800))
+            .await
     }
 
     pub async fn get_nav(&self, id: u64) -> Result<Option<NavigationTarget>> {
@@ -58,7 +60,8 @@ impl StateRepository {
     }
 
     pub async fn save_results(&self, id: u64, value: &CachedResults) -> Result<()> {
-        self.save(&format!("res:{}", id), value, Duration::from_secs(1800)).await
+        self.save(&format!("res:{}", id), value, Duration::from_secs(1800))
+            .await
     }
 
     pub async fn get_results(&self, id: u64) -> Result<Option<CachedResults>> {
